@@ -267,6 +267,7 @@
   * [request.failure()](#requestfailure)
   * [request.frame()](#requestframe)
   * [request.headers()](#requestheaders)
+  * [request.initiator()](#requestinitiator)
   * [request.isNavigationRequest()](#requestisnavigationrequest)
   * [request.method()](#requestmethod)
   * [request.postData()](#requestpostdata)
@@ -3314,6 +3315,16 @@ page.on('requestfailed', request => {
 
 #### request.headers()
 - returns: <[Object]> An object with HTTP headers associated with the request. All header names are lower-case.
+
+#### request.initiator()
+- returns: <[Object]> An object describing the initiator of the request
+  - `type` <[string]> Type of this initiator. Values : `'parser'`, `'script'`, `'preload'`, `'SignedExchange'`, `'other'`
+  - `stack` <?[Object]> Initiator JavaScript stack trace, set for Script only. Visit [ChromeDevTools Doc](https://chromedevtools.github.io/devtools-protocol/tot/Runtime#type-StackTrace "Runtime.StackTrace") for more information.
+  - `url` <?[string]> Initiator URL, set for Parser type or for Script type (when script is importing module) or for SignedExchange type.
+  - `lineNumber` <?[number]> Initiator line number, set for Parser type or for Script type (when script is importing module) (0-based).
+
+For more information about the returned object:
+https://chromedevtools.github.io/devtools-protocol/tot/Network#type-Initiator
 
 #### request.isNavigationRequest()
 - returns: <[boolean]>
