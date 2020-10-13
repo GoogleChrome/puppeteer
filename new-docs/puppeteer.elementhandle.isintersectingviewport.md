@@ -2,16 +2,16 @@
 
 [Home](./index.md) &gt; [puppeteer](./puppeteer.md) &gt; [ElementHandle](./puppeteer.elementhandle.md) &gt; [isIntersectingViewport](./puppeteer.elementhandle.isintersectingviewport.md)
 
-## ElementHandle.isIntersectingViewport() method
+## ElementHandle.isIntersectingViewport(threshold) method
 
 Resolves to true if the element is visible in the current viewport.
 
 <b>Signature:</b>
 
 ```typescript
-isIntersectingViewport(): Promise<boolean>;
+isIntersectingViewport(threshold): Promise<boolean>;
 ```
+
 <b>Returns:</b>
 
 Promise&lt;boolean&gt;
-

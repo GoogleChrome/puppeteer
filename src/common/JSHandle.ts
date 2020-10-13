@@ -920,19 +920,19 @@ export class ElementHandle<
   /**
    * Resolves to true if the element is visible in the current viewport.
    */
-  async isIntersectingViewport(): Promise<boolean> {
-    return await this.evaluate<(element: Element) => Promise<boolean>>(
-      async (element) => {
-        const visibleRatio = await new Promise((resolve) => {
-          const observer = new IntersectionObserver((entries) => {
-            resolve(entries[0].intersectionRatio);
-            observer.disconnect();
-          });
-          observer.observe(element);
+  async isIntersectingViewport(threshold = 0): Promise<boolean> {
+    return await this.evaluate<
+      (element: Element, threshold?: number) => Promise<boolean>
+    >(async (element, threshold) => {
+      const visibleRatio: number = await new Promise((resolve) => {
+        const observer = new IntersectionObserver((entries) => {
+          resolve(entries[0].intersectionRatio);
+          observer.disconnect();
         });
-        return visibleRatio > 0;
-      }
-    );
+        observer.observe(element);
+      });
+      return visibleRatio - threshold > 0;
+    }, threshold);
   }
 }
 
