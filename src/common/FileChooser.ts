@@ -19,6 +19,7 @@ import { Protocol } from 'devtools-protocol';
 import { assert } from './assert.js';
 
 /**
+ * @defaultValue
  * File choosers let you react to the page requesting for a file.
  * @remarks
  * `FileChooser` objects are returned via the `page.waitForFileChooser` method.
@@ -33,7 +34,8 @@ import { assert } from './assert.js';
  * ```
  * **NOTE** In browsers, only one file chooser can be opened at a time.
  * All file choosers must be accepted or canceled. Not doing so will prevent
- * subsequent file choosers from appearing.
+ * subsequent file choosers from app/earing.
+ * @public
  */
 export class FileChooser {
   private _element: ElementHandle;

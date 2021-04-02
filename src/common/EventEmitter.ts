@@ -32,7 +32,7 @@ export interface CommonEventEmitter {
  * accordingly. Therefore you'll mostly use {@link EventEmitter.on | on} and
  * {@link EventEmitter.off | off} to bind
  * and unbind to event listeners.
- *
+ * 
  * @public
  */
 export class EventEmitter implements CommonEventEmitter {
@@ -40,7 +40,7 @@ export class EventEmitter implements CommonEventEmitter {
   private eventsMap = new Map<EventType, Handler[]>();
 
   /**
-   * @internal
+   * @defaultValue
    */
   constructor() {
     this.emitter = mitt(this.eventsMap);
