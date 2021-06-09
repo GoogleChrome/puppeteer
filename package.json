@@ -35,7 +35,7 @@
     "tsc-esm": "tsc -b src/tsconfig.esm.json",
     "apply-next-version": "node utils/apply_next_version.js",
     "test-install": "scripts/test-install.sh",
-    "generate-d-ts": "api-extractor run --local --verbose",
+    "generate-d-ts": "api-extractor run --local --verbose && node inject-global-type-stubs.js",
     "generate-docs": "npm run generate-d-ts && api-documenter markdown -i temp -o new-docs",
     "ensure-correct-devtools-protocol-revision": "ts-node -s scripts/ensure-correct-devtools-protocol-package",
     "ensure-pinned-deps": "ts-node -s scripts/ensure-pinned-deps",
