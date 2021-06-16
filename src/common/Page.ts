@@ -60,6 +60,7 @@ import {
 } from './EvalTypes.js';
 import { PDFOptions, paperFormats } from './PDFOptions.js';
 import { isNode } from '../environment.js';
+import { TaskQueue } from './TaskQueue.js';
 
 /**
  * @public
@@ -366,22 +367,6 @@ export interface PageEventObject {
   workerdestroyed: WebWorker;
 }
 
-class ScreenshotTaskQueue {
-  _chain: Promise<Buffer | string | void>;
-
-  constructor() {
-    this._chain = Promise.resolve<Buffer | string | void>(undefined);
-  }
-
-  public postTask(
-    task: () => Promise<Buffer | string>
-  ): Promise<Buffer | string | void> {
-    const result = this._chain.then(task);
-    this._chain = result.catch(() => {});
-    return result;
-  }
-}
-
 /**
  * Page provides methods to interact with a single tab or
  * {@link https://developer.chrome.com/extensions/background_pages | extension background page} in Chromium.
@@ -433,9 +418,15 @@ export class Page extends EventEmitter {
     client: CDPSession,
     target: Target,
     ignoreHTTPSErrors: boolean,
-    defaultViewport: Viewport | null
+    defaultViewport: Viewport | null,
+    screenshotTaskQueue: TaskQueue
   ): Promise<Page> {
-    const page = new Page(client, target, ignoreHTTPSErrors);
+    const page = new Page(
+      client,
+      target,
+      ignoreHTTPSErrors,
+      screenshotTaskQueue
+    );
     await page._initialize();
     if (defaultViewport) await page.setViewport(defaultViewport);
     return page;
@@ -456,7 +447,7 @@ export class Page extends EventEmitter {
   private _coverage: Coverage;
   private _javascriptEnabled = true;
   private _viewport: Viewport | null;
-  private _screenshotTaskQueue: ScreenshotTaskQueue;
+  private _screenshotTaskQueue: TaskQueue;
   private _workers = new Map<string, WebWorker>();
   // TODO: improve this typedef - it's a function that takes a file chooser or
   // something?
@@ -468,7 +459,12 @@ export class Page extends EventEmitter {
   /**
    * @internal
    */
-  constructor(client: CDPSession, target: Target, ignoreHTTPSErrors: boolean) {
+  constructor(
+    client: CDPSession,
+    target: Target,
+    ignoreHTTPSErrors: boolean,
+    screenshotTaskQueue: TaskQueue
+  ) {
     super();
     this._client = client;
     this._target = target;
@@ -485,7 +481,7 @@ export class Page extends EventEmitter {
     this._emulationManager = new EmulationManager(client);
     this._tracing = new Tracing(client);
     this._coverage = new Coverage(client);
-    this._screenshotTaskQueue = new ScreenshotTaskQueue();
+    this._screenshotTaskQueue = screenshotTaskQueue;
     this._viewport = null;
 
     client.on('Target.attachedToTarget', (event) => {
@@ -1835,9 +1831,7 @@ export class Page extends EventEmitter {
     await this._frameManager.networkManager().setCacheEnabled(enabled);
   }
 
-  async screenshot(
-    options: ScreenshotOptions = {}
-  ): Promise<Buffer | string | void> {
+  async screenshot(options: ScreenshotOptions = {}): Promise<Buffer | string> {
     let screenshotType = null;
     // options.type takes precedence over inferring the type from options.path
     // because it may be a 0-length file with no extension created beforehand
