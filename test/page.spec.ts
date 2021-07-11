@@ -1797,4 +1797,22 @@ describe('Page', function () {
       expect(page.browserContext()).toBe(context);
     });
   });
+
+  describe('WebVitals', () => {
+    it('should report all relevant metrics', async () => {
+      const { page, server } = getTestState();
+
+      const events = [];
+      await page.webVitals.on('*', (metric) => {
+        events.push(metric);
+      });
+      await page.webVitals.start();
+      await page.goto(server.PREFIX + '/webvitals.html');
+      await page.click('#button');
+      await page.waitForSelector('#done');
+      await page.goto(server.EMPTY_PAGE);
+      await page.webVitals.stop();
+      expect(events).toEqual(['TTFB', 'FCP', 'LCP', 'FID', 'CLS']);
+    });
+  });
 });

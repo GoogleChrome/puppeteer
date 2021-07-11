@@ -62,6 +62,7 @@ import {
 } from './EvalTypes.js';
 import { PDFOptions, paperFormats } from './PDFOptions.js';
 import { isNode } from '../environment.js';
+import { WebVitals } from './WebVitals.js';
 
 /**
  * @public
@@ -379,7 +380,7 @@ class ScreenshotTaskQueue {
     task: () => Promise<Buffer | string>
   ): Promise<Buffer | string | void> {
     const result = this._chain.then(task);
-    this._chain = result.catch(() => {});
+    this._chain = result.catch(() => { });
     return result;
   }
 }
@@ -460,6 +461,7 @@ export class Page extends EventEmitter {
   private _viewport: Viewport | null;
   private _screenshotTaskQueue: ScreenshotTaskQueue;
   private _workers = new Map<string, WebWorker>();
+  private _webVitals: WebVitals;
   // TODO: improve this typedef - it's a function that takes a file chooser or
   // something?
   private _fileChooserInterceptors = new Set<Function>();
@@ -487,6 +489,7 @@ export class Page extends EventEmitter {
     this._emulationManager = new EmulationManager(client);
     this._tracing = new Tracing(client);
     this._coverage = new Coverage(client);
+    this._webVitals = new WebVitals(client, this._frameManager);
     this._screenshotTaskQueue = new ScreenshotTaskQueue();
     this._viewport = null;
 
@@ -775,6 +778,10 @@ export class Page extends EventEmitter {
 
   get accessibility(): Accessibility {
     return this._accessibility;
+  }
+
+  get webVitals(): WebVitals {
+    return this._webVitals;
   }
 
   get isDragInterceptionEnabled(): boolean {
@@ -1498,6 +1505,10 @@ export class Page extends EventEmitter {
   private async _onBindingCalled(
     event: Protocol.Runtime.BindingCalledEvent
   ): Promise<void> {
+    if (this.webVitals.interceptBindingCalled(event)) {
+      return;
+    }
+
     let payload: { type: string; name: string; seq: number; args: unknown[] };
     try {
       payload = JSON.parse(event.payload);
@@ -1506,6 +1517,7 @@ export class Page extends EventEmitter {
       // called before our wrapper was initialized.
       return;
     }
+
     const { type, name, seq, args } = payload;
     if (type !== 'exposedFun' || !this._pageBindings.has(name)) return;
     let expression = null;
@@ -2499,13 +2511,13 @@ export class Page extends EventEmitter {
       assert(
         screenshotType === 'jpeg',
         'options.quality is unsupported for the ' +
-          screenshotType +
-          ' screenshots'
+        screenshotType +
+        ' screenshots'
       );
       assert(
         typeof options.quality === 'number',
         'Expected options.quality to be a number but found ' +
-          typeof options.quality
+        typeof options.quality
       );
       assert(
         Number.isInteger(options.quality),
@@ -2514,7 +2526,7 @@ export class Page extends EventEmitter {
       assert(
         options.quality >= 0 && options.quality <= 100,
         'Expected options.quality to be between 0 and 100 (inclusive), got ' +
-          options.quality
+        options.quality
       );
     }
     assert(
@@ -2525,22 +2537,22 @@ export class Page extends EventEmitter {
       assert(
         typeof options.clip.x === 'number',
         'Expected options.clip.x to be a number but found ' +
-          typeof options.clip.x
+        typeof options.clip.x
       );
       assert(
         typeof options.clip.y === 'number',
         'Expected options.clip.y to be a number but found ' +
-          typeof options.clip.y
+        typeof options.clip.y
       );
       assert(
         typeof options.clip.width === 'number',
         'Expected options.clip.width to be a number but found ' +
-          typeof options.clip.width
+        typeof options.clip.width
       );
       assert(
         typeof options.clip.height === 'number',
         'Expected options.clip.height to be a number but found ' +
-          typeof options.clip.height
+        typeof options.clip.height
       );
       assert(
         options.clip.width !== 0,
