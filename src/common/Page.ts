@@ -2565,6 +2565,30 @@ export class Page extends EventEmitter {
     captureBeyondViewport =
       typeof captureBeyondViewport === 'boolean' ? captureBeyondViewport : true;
 
+    try {
+      // Not hiding the size overlay will cause unwilling artefacts on the screenshot.
+      await this._client.send('Overlay.setShowViewportSizeOnResize', {
+        show: false,
+      });
+    } catch (error) {
+      if (
+        error.message &&
+        error.message.includes('Overlay.setShowViewportSizeOnResize') &&
+        error.message.includes('UnknownMethodError')
+      ) {
+        // Skip. Firefox doesn't have method `Overlay.setShowViewportSizeOnResize`.
+        // The following exception is expected:
+        //
+        // Protocol error(Overlay.setShowViewportSizeOnResize):
+        // Overlay.setShowViewportSizeOnResize
+        // RemoteAgentError@chrome://remote/content/Error.jsm:25:5
+        // ``UnknownMethodError``@chrome://remote/content/Error.jsm:108:7
+        // execute@chrome://remote/content/domains/DomainCache.jsm:96:13
+      } else {
+        throw error;
+      }
+    }
+
     if (options.fullPage) {
       const metrics = await this._client.send('Page.getLayoutMetrics');
       // Fallback to `contentSize` in case of using Firefox.

@@ -23,6 +23,7 @@ import {
   getTestState,
   describeChromeOnly,
   itFailsWindows,
+  itFailsFirefox,
 } from './mocha-utils'; // eslint-disable-line import/extensions
 import rimraf from 'rimraf';
 
@@ -40,6 +41,7 @@ describeChromeOnly('headful tests', function () {
   this.timeout(20 * 1000);
 
   let headfulOptions;
+  let headfulDevToolsOptions;
   let headlessOptions;
   let extensionOptions;
   let forcedOopifOptions;
@@ -49,6 +51,10 @@ describeChromeOnly('headful tests', function () {
     const { server, defaultBrowserOptions } = getTestState();
     headfulOptions = Object.assign({}, defaultBrowserOptions, {
       headless: false,
+    });
+    headfulDevToolsOptions = Object.assign({}, defaultBrowserOptions, {
+      headless: false,
+      devtools: true,
     });
     headlessOptions = Object.assign({}, defaultBrowserOptions, {
       headless: true,
@@ -92,6 +98,40 @@ describeChromeOnly('headful tests', function () {
   });
 
   describe('HEADFUL', function () {
+    // Currently the test fails on the environments with scale factor != 1.
+    // https://github.com/puppeteer/puppeteer/issues/6823
+    itFailsFirefox(
+      'headful with DevTools should take fullPage screenshot',
+      async () => {
+        const { server, puppeteer } = getTestState();
+
+        const browser = await puppeteer.launch(headfulDevToolsOptions);
+        const page = await browser.newPage();
+        await page.setViewport({ width: 500, height: 500 });
+        await page.goto(server.PREFIX + '/grid.html');
+
+        // Sometimes the first screenshot is taken before the size overlay is shown.
+        // 3 screenshots are taken to verify size overlay is not there.
+        const screenshot1 = await page.screenshot({
+          fullPage: true,
+        });
+
+        const screenshot2 = await page.screenshot({
+          fullPage: true,
+        });
+
+        const screenshot3 = await page.screenshot({
+          fullPage: true,
+        });
+
+        await browser.close();
+
+        // Assertion is done after the browser is closed.
+        expect(screenshot1).toBeGolden('screenshot-grid-fullpage.png');
+        expect(screenshot2).toBeGolden('screenshot-grid-fullpage.png');
+        expect(screenshot3).toBeGolden('screenshot-grid-fullpage.png');
+      }
+    );
     it('background_page target type should be available', async () => {
       const { puppeteer } = getTestState();
       const browserWithExtension = await launchBrowser(
