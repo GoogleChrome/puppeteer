@@ -175,6 +175,13 @@
     "comment": "Bidi does not have equivalent field"
   },
   {
+    "testIdPattern": "[network.test] network Response.stream *",
+    "platforms": ["darwin", "linux", "win32"],
+    "parameters": ["webDriverBiDi"],
+    "expectations": ["SKIP"],
+    "comment": "CDP-specific feature, not supported in WebDriver BiDi"
+  },
+  {
     "testIdPattern": "[page.test] Page Page.Events.Issue *",
     "platforms": ["darwin", "linux", "win32"],
     "parameters": ["webDriverBiDi"],
