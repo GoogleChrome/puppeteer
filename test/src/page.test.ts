@@ -450,6 +450,21 @@ describe('Page', function () {
         longitude: 10,
       });
     });
+    it('should default accuracy to 0', async () => {
+      const {page, server, context} = await getTestState();
+
+      await context.overridePermissions(server.PREFIX, ['geolocation']);
+      await page.goto(server.EMPTY_PAGE);
+      await page.setGeolocation({longitude: 10, latitude: 10});
+      const accuracy = await page.evaluate(() => {
+        return new Promise(resolve => {
+          return navigator.geolocation.getCurrentPosition(position => {
+            resolve(position.coords.accuracy);
+          });
+        });
+      });
+      expect(accuracy).toBe(0);
+    });
     it('should remove the override when called with null', async () => {
       const {page, server, context} = await getTestState();
 
