@@ -266,7 +266,7 @@ Sets the permission for a specific origin.
 </td></tr>
 <tr><td>
 
-<span id="targets">[targets()](./puppeteer.browsercontext.targets.md)</span>
+<span id="targets">[targets(options)](./puppeteer.browsercontext.targets.md)</span>
 
 </td><td>
 

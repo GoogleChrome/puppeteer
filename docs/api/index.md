@@ -1493,6 +1493,15 @@ WebDriver BiDi capabilities that are not set by Puppeteer itself.
 </td></tr>
 <tr><td>
 
+<span id="targetoptions">[TargetOptions](./puppeteer.targetoptions.md)</span>
+
+</td><td>
+
+**_(Experimental)_**
+
+</td></tr>
+<tr><td>
+
 <span id="touchhandle">[TouchHandle](./puppeteer.touchhandle.md)</span>
 
 </td><td>

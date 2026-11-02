@@ -6,7 +6,11 @@
 
 import type {Protocol} from 'devtools-protocol';
 
-import {BrowserEvent, type Browser} from '../api/Browser.js';
+import {
+  BrowserEvent,
+  type Browser,
+  type TargetOptions,
+} from '../api/Browser.js';
 import {
   BrowserContextEvent,
   type BrowserContext,
@@ -42,7 +46,9 @@ export class CdpTarget extends Target {
   #sessionFactory:
     ((isAutoAttachEmulated: boolean) => Promise<CdpCDPSession>) | undefined;
   #logger: Logger;
+  #parentTarget?: CdpTarget;
   #childTargets = new Set<CdpTarget>();
+  #discardListeners = new Set<() => void>();
   _initializedDeferred = Deferred.create<InitializationStatus>();
   _isClosedDeferred = Deferred.create<void>();
   _targetId: string;
@@ -63,6 +69,7 @@ export class CdpTarget extends Target {
     sessionFactory:
       ((isAutoAttachEmulated: boolean) => Promise<CdpCDPSession>) | undefined,
     logger: Logger,
+    parentTarget?: CdpTarget,
   ) {
     super(logger);
     this.#session = session;
@@ -72,12 +79,16 @@ export class CdpTarget extends Target {
     this._targetId = targetInfo.targetId;
     this.#sessionFactory = sessionFactory;
     this.#logger = logger;
+    this.#parentTarget = parentTarget;
     if (this.#session) {
       this.#session.setTarget(this);
     }
   }
 
   override async asPage(): Promise<Page> {
+    if (this.isDiscarded()) {
+      throw new Error('Cannot create a page for a discarded target.');
+    }
     if (this.pagePromise) {
       const page = await this.pagePromise;
       if (page) {
@@ -111,6 +122,9 @@ export class CdpTarget extends Target {
   }
 
   _addChildTarget(target: CdpTarget): void {
+    if (!target.#parentTarget) {
+      target.#parentTarget = this;
+    }
     this.#childTargets.add(target);
   }
 
@@ -204,6 +218,28 @@ export class CdpTarget extends Target {
       });
   }
 
+  override isDiscarded(): boolean {
+    return (
+      this._subtype() === 'discarded' ||
+      Boolean(this.#parentTarget?.isDiscarded())
+    );
+  }
+
+  _addDiscardListener(listener: () => void): () => void {
+    this.#discardListeners.add(listener);
+    return () => {
+      this.#discardListeners.delete(listener);
+    };
+  }
+
+  _onDiscarded(): void {
+    this.pagePromise = undefined;
+    this._asPagePromise = undefined;
+    for (const listener of Array.from(this.#discardListeners)) {
+      listener();
+    }
+  }
+
   _targetInfoChanged(targetInfo: Protocol.Target.TargetInfo): void {
     this.#targetInfo = targetInfo;
     this._checkIfInitialized();
@@ -213,8 +249,20 @@ export class CdpTarget extends Target {
     this._initializedDeferred.resolve(InitializationStatus.SUCCESS);
   }
 
-  _isTargetExposed(): boolean {
-    return this.type() !== TargetType.TAB && !this._subtype();
+  _isTargetExposed(options?: TargetOptions): boolean {
+    if (this.type() === TargetType.TAB) {
+      return Boolean(options?.includeDiscarded && this.isDiscarded());
+    }
+    if (this.#parentTarget?.isDiscarded()) {
+      return false;
+    }
+    if (this._subtype() && this._subtype() !== 'discarded') {
+      return false;
+    }
+    if (!options?.includeDiscarded && this.isDiscarded()) {
+      return false;
+    }
+    return true;
   }
 
   protected _checkIfInitialized(): void {
@@ -238,6 +286,7 @@ export class PageTarget extends CdpTarget {
     sessionFactory: (isAutoAttachEmulated: boolean) => Promise<CdpCDPSession>,
     defaultViewport: Viewport | null,
     logger: Logger,
+    parentTarget?: CdpTarget,
   ) {
     super(
       targetInfo,
@@ -246,6 +295,7 @@ export class PageTarget extends CdpTarget {
       targetManager,
       sessionFactory,
       logger,
+      parentTarget,
     );
     this.#defaultViewport = defaultViewport ?? undefined;
   }
@@ -279,6 +329,9 @@ export class PageTarget extends CdpTarget {
   }
 
   override async page(): Promise<Page | null> {
+    if (this.isDiscarded()) {
+      return null;
+    }
     if (!this.pagePromise) {
       const session = this._session();
       this.pagePromise = (

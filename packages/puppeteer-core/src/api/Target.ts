@@ -24,7 +24,7 @@ export enum TargetType {
   WEBVIEW = 'webview',
   OTHER = 'other',
   /**
-   * @internal
+   * @experimental
    */
   TAB = 'tab',
 }
@@ -94,4 +94,13 @@ export abstract class Target {
    * Get the target that opened this target. Top-level targets return `null`.
    */
   abstract opener(): Target | undefined;
+
+  /**
+   * Checks whether the browser tab of this target is discarded.
+   *
+   * @experimental
+   */
+  isDiscarded(): boolean {
+    return false;
+  }
 }

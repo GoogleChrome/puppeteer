@@ -11,6 +11,7 @@ import type {TargetFilterCallback} from '../api/Browser.js';
 import type {NetworkRestrictions} from '../api/Browser.js';
 import type {CDPSession} from '../api/CDPSession.js';
 import {CDPSessionEvent} from '../api/CDPSession.js';
+import {TargetType} from '../api/Target.js';
 import {DEBUG_PREFIXES, type Logger} from '../common/Debug.js';
 import {EventEmitter} from '../common/EventEmitter.js';
 import {assertSupportedUrlRestrictions} from '../common/util.js';
@@ -38,7 +39,12 @@ function isPageTargetBecomingPrimary(
   target: CdpTarget,
   newTargetInfo: Protocol.Target.TargetInfo,
 ): boolean {
-  return Boolean(target._subtype()) && !newTargetInfo.subtype;
+  return (
+    target.type() === TargetType.PAGE &&
+    Boolean(target._subtype()) &&
+    target._subtype() !== 'discarded' &&
+    !newTargetInfo.subtype
+  );
 }
 
 /**
@@ -315,6 +321,7 @@ export class TargetManager
     const previousURL = target.url();
     const wasInitialized =
       target._initializedDeferred.value() === InitializationStatus.SUCCESS;
+    const wasDiscarded = target.isDiscarded();
 
     if (isPageTargetBecomingPrimary(target, event.targetInfo)) {
       const session = target._session();
@@ -327,6 +334,23 @@ export class TargetManager
 
     target._targetInfoChanged(event.targetInfo);
 
+    const isNowDiscarded = target.isDiscarded();
+    if (target.type() === TargetType.TAB && wasDiscarded !== isNowDiscarded) {
+      const descendants = this.#getDescendantTargets(target);
+      if (isNowDiscarded) {
+        this.#finishInitializationIfReady(target._targetId);
+        target._onDiscarded();
+        for (const childTarget of descendants) {
+          childTarget._onDiscarded();
+          this.emit(TargetManagerEvent.TargetDiscarded, childTarget);
+        }
+      } else {
+        for (const childTarget of descendants) {
+          this.emit(TargetManagerEvent.TargetUndiscarded, childTarget);
+        }
+      }
+    }
+
     if (wasInitialized && previousURL !== target.url()) {
       this.emit(TargetManagerEvent.TargetChanged, {
         target,
@@ -335,6 +359,22 @@ export class TargetManager
       });
     }
   };
+
+  #getDescendantTargets(root: CdpTarget): CdpTarget[] {
+    const descendants: CdpTarget[] = [];
+    for (const child of root._childTargets()) {
+      descendants.push(child);
+    }
+    let idx = 0;
+    while (idx < descendants.length) {
+      const next = descendants[idx]!;
+      idx++;
+      for (const child of next._childTargets()) {
+        descendants.push(child);
+      }
+    }
+    return descendants;
+  }
 
   #onAttachedToTarget = async (
     parentSession: Connection | CDPSession,
@@ -446,6 +486,7 @@ export class TargetManager
     if (
       this.#waitForInitiallyDiscoveredTargets &&
       event.targetInfo.type === 'tab' &&
+      event.targetInfo.subtype !== 'discarded' &&
       !this.#initialAttachDone
     ) {
       this.#targetsIdsForInit.add(event.targetInfo.targetId);
@@ -557,6 +598,9 @@ export class TargetManager
       parentSession.target()._removeChildTarget(target);
     }
     this.#attachedTargetsByTargetId.delete(target._targetId);
+    if (target.type() === TargetType.TAB) {
+      this.#finishInitializationIfReady(target._targetId);
+    }
     this.emit(TargetManagerEvent.TargetGone, target);
   };
 

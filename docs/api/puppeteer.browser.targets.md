@@ -12,9 +12,39 @@ In case of multiple [browser contexts](./puppeteer.browsercontext.md), this retu
 
 ```typescript
 class Browser {
-  abstract targets(): Target[];
+  abstract targets(options?: TargetOptions): Target[];
 }
 ```
+
+## Parameters
+
+<table><thead><tr><th>
+
+Parameter
+
+</th><th>
+
+Type
+
+</th><th>
+
+Description
+
+</th></tr></thead>
+<tbody><tr><td>
+
+options
+
+</td><td>
+
+[TargetOptions](./puppeteer.targetoptions.md)
+
+</td><td>
+
+_(Optional)_ Options to filter the returned targets.
+
+</td></tr>
+</tbody></table>
 
 **Returns:**
 

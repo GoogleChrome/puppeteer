@@ -68,7 +68,7 @@ import {environment} from '../environment.js';
 import type {Realm} from '../index-browser.js';
 import {assert} from '../util/assert.js';
 import {Deferred} from '../util/Deferred.js';
-import {AsyncDisposableStack} from '../util/disposable.js';
+import {AsyncDisposableStack, DisposableStack} from '../util/disposable.js';
 import {isErrorLike} from '../util/ErrorLike.js';
 
 import {Binding} from './Binding.js';
@@ -144,6 +144,7 @@ export class CdpPage extends Page {
   }
 
   #closed = false;
+  readonly #subscriptions = new DisposableStack();
   readonly #targetManager: TargetManager;
   readonly #cdpBluetoothEmulation: CdpBluetoothEmulation;
 
@@ -199,7 +200,9 @@ export class CdpPage extends Page {
       this.#primaryTargetClient.connection(),
     );
 
-    const frameManagerEmitter = new EventEmitter(this.#frameManager);
+    const frameManagerEmitter = this.#subscriptions.use(
+      new EventEmitter(this.#frameManager),
+    );
     frameManagerEmitter.on(FrameManagerEvent.FrameAttached, frame => {
       this.emit(PageEvent.FrameAttached, frame);
     });
@@ -222,8 +225,8 @@ export class CdpPage extends Page {
       },
     );
 
-    const networkManagerEmitter = new EventEmitter(
-      this.#frameManager.networkManager,
+    const networkManagerEmitter = this.#subscriptions.use(
+      new EventEmitter(this.#frameManager.networkManager),
     );
     networkManagerEmitter.on(NetworkManagerEvent.Request, request => {
       this.emit(PageEvent.Request, request);
@@ -246,32 +249,44 @@ export class CdpPage extends Page {
       this.emit(PageEvent.RequestFinished, request);
     });
 
-    this.#tabTargetClient.on(
+    const tabTargetClientEmitter = this.#subscriptions.use(
+      new EventEmitter(this.#tabTargetClient),
+    );
+    tabTargetClientEmitter.on(
       CDPSessionEvent.Swapped,
       this.#onActivation.bind(this),
     );
 
-    this.#tabTargetClient.on(
+    tabTargetClientEmitter.on(
       CDPSessionEvent.Ready,
       this.#onSecondaryTarget.bind(this),
     );
 
-    this.#targetManager.on(
+    const targetManagerEmitter = this.#subscriptions.use(
+      new EventEmitter(this.#targetManager),
+    );
+    targetManagerEmitter.on(
       TargetManagerEvent.TargetGone,
       this.#onDetachedFromTarget,
     );
 
+    const closePage = () => {
+      if (this.#closed) {
+        return;
+      }
+      removeDiscardListener();
+      this.#subscriptions.dispose();
+      this.#sessionCloseDeferred.reject(new TargetCloseError('Target closed'));
+
+      this.#closed = true;
+      this.emit(PageEvent.Close, undefined);
+    };
+    const removeDiscardListener =
+      this.#tabTarget._addDiscardListener(closePage);
+
     void this.#tabTarget._isClosedDeferred
       .valueOrThrow()
-      .then(() => {
-        this.#targetManager.off(
-          TargetManagerEvent.TargetGone,
-          this.#onDetachedFromTarget,
-        );
-
-        this.emit(PageEvent.Close, undefined);
-        this.#closed = true;
-      })
+      .then(closePage)
       .catch(error => {
         this.logger?.(DEBUG_PREFIXES.error)?.(error);
       });
@@ -341,7 +356,12 @@ export class CdpPage extends Page {
    * during a navigation to a prerended page.
    */
   #setupPrimaryTargetListeners() {
-    const clientEmitter = new EventEmitter(this.#primaryTargetClient);
+    if (this.#subscriptions.disposed) {
+      return;
+    }
+    const clientEmitter = this.#subscriptions.use(
+      new EventEmitter(this.#primaryTargetClient),
+    );
     clientEmitter.on(CDPSessionEvent.Ready, this.#onAttachedToTarget);
     clientEmitter.on(CDPSessionEvent.Disconnected, () => {
       this.#sessionCloseDeferred.reject(new TargetCloseError('Target closed'));

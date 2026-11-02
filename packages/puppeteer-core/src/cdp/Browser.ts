@@ -12,6 +12,7 @@ import type {
   CreatePageOptions,
   DebugInfo,
   ExtensionInstallOptions,
+  TargetOptions,
 } from '../api/Browser.js';
 import {
   Browser as BrowserBase,
@@ -130,6 +131,7 @@ export class CdpBrowser extends BrowserBase {
   #extensions = new Map<string, Extension>();
   #version?: Deferred<Protocol.Browser.GetVersionResponse>;
   #hasNetworkRestrictions = false;
+  #exposedTargets = new Set<CdpTarget>();
   #subscriptions = new DisposableStack();
 
   constructor(
@@ -213,6 +215,14 @@ export class CdpBrowser extends BrowserBase {
     targetManagerEmitter.on(
       TargetManagerEvent.TargetGone,
       this.#onDetachedFromTarget,
+    );
+    targetManagerEmitter.on(
+      TargetManagerEvent.TargetDiscarded,
+      this.#onTargetDiscarded,
+    );
+    targetManagerEmitter.on(
+      TargetManagerEvent.TargetUndiscarded,
+      this.#onAttachedToTarget,
     );
     targetManagerEmitter.on(
       TargetManagerEvent.TargetChanged,
@@ -317,6 +327,7 @@ export class CdpBrowser extends BrowserBase {
   #createTarget = (
     targetInfo: Protocol.Target.TargetInfo,
     session?: CdpCDPSession,
+    parentSession?: CdpCDPSession,
   ) => {
     const {browserContextId} = targetInfo;
     const context =
@@ -331,6 +342,7 @@ export class CdpBrowser extends BrowserBase {
     const createSession = (isAutoAttachEmulated: boolean) => {
       return this.#connection._createSession(targetInfo, isAutoAttachEmulated);
     };
+    const parentTarget = parentSession?.target();
     const otherTarget = new OtherTarget(
       targetInfo,
       session,
@@ -338,6 +350,7 @@ export class CdpBrowser extends BrowserBase {
       this.#targetManager,
       createSession,
       this.logger,
+      parentTarget,
     );
     if (targetInfo.url && isDevToolsPageTarget(targetInfo.url)) {
       return new DevToolsTarget(
@@ -348,6 +361,7 @@ export class CdpBrowser extends BrowserBase {
         createSession,
         this.#defaultViewport ?? null,
         this.logger,
+        parentTarget,
       );
     }
     if (this.#isPageTargetCallback(otherTarget)) {
@@ -359,6 +373,7 @@ export class CdpBrowser extends BrowserBase {
         createSession,
         this.#defaultViewport ?? null,
         this.logger,
+        parentTarget,
       );
     }
     if (
@@ -372,17 +387,26 @@ export class CdpBrowser extends BrowserBase {
         this.#targetManager,
         createSession,
         this.logger,
+        parentTarget,
       );
     }
     return otherTarget;
   };
 
   #onAttachedToTarget = async (target: CdpTarget) => {
+    if (!target._isTargetExposed()) {
+      return;
+    }
     if (
-      target._isTargetExposed() &&
       (await target._initializedDeferred.valueOrThrow()) ===
-        InitializationStatus.SUCCESS
+        InitializationStatus.SUCCESS &&
+      // Re-check exposure in case the target became discarded while awaiting
+      // initialization.
+      target._isTargetExposed() &&
+      !target._isClosedDeferred.resolved() &&
+      !this.#exposedTargets.has(target)
     ) {
+      this.#exposedTargets.add(target);
       this.emit(BrowserEvent.TargetCreated, target);
       target.browserContext().emit(BrowserContextEvent.TargetCreated, target);
     }
@@ -392,9 +416,23 @@ export class CdpBrowser extends BrowserBase {
     target._initializedDeferred.resolve(InitializationStatus.ABORTED);
     target._isClosedDeferred.resolve();
     if (
-      target._isTargetExposed() &&
       (await target._initializedDeferred.valueOrThrow()) ===
-        InitializationStatus.SUCCESS
+        InitializationStatus.SUCCESS &&
+      this.#exposedTargets.delete(target)
+    ) {
+      this.emit(BrowserEvent.TargetDestroyed, target);
+      target.browserContext().emit(BrowserContextEvent.TargetDestroyed, target);
+    }
+  };
+
+  #onTargetDiscarded = async (target: CdpTarget): Promise<void> => {
+    if (!target._initializedDeferred.resolved()) {
+      return;
+    }
+    if (
+      (await target._initializedDeferred.valueOrThrow()) ===
+        InitializationStatus.SUCCESS &&
+      this.#exposedTargets.delete(target)
     ) {
       this.emit(BrowserEvent.TargetDestroyed, target);
       target.browserContext().emit(BrowserContextEvent.TargetDestroyed, target);
@@ -402,6 +440,9 @@ export class CdpBrowser extends BrowserBase {
   };
 
   #onTargetChanged = ({target}: {target: CdpTarget}): void => {
+    if (!target._isTargetExposed()) {
+      return;
+    }
     this.emit(BrowserEvent.TargetChanged, target);
     target.browserContext().emit(BrowserContextEvent.TargetChanged, target);
   };
@@ -678,12 +719,12 @@ export class CdpBrowser extends BrowserBase {
     });
   }
 
-  override targets(): CdpTarget[] {
+  override targets(options?: TargetOptions): CdpTarget[] {
     return Array.from(
       this.#targetManager.getAvailableTargets().values(),
     ).filter(target => {
       return (
-        target._isTargetExposed() &&
+        target._isTargetExposed(options) &&
         target._initializedDeferred.value() === InitializationStatus.SUCCESS
       );
     });

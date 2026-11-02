@@ -113,6 +113,17 @@ Creates a Chrome Devtools Protocol session attached to the target.
 </td></tr>
 <tr><td>
 
+<span id="isdiscarded">[isDiscarded()](./puppeteer.target.isdiscarded.md)</span>
+
+</td><td>
+
+</td><td>
+
+**_(Experimental)_** Checks whether the browser tab of this target is discarded.
+
+</td></tr>
+<tr><td>
+
 <span id="opener">[opener()](./puppeteer.target.opener.md)</span>
 
 </td><td>

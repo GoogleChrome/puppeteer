@@ -487,7 +487,7 @@ Gets the [target](./puppeteer.target.md) associated with the [default browser co
 </td></tr>
 <tr><td>
 
-<span id="targets">[targets()](./puppeteer.browser.targets.md)</span>
+<span id="targets">[targets(options)](./puppeteer.browser.targets.md)</span>
 
 </td><td>
 

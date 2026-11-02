@@ -147,6 +147,20 @@ export type PermissionState = 'granted' | 'denied' | 'prompt';
 
 /**
  * @public
+ * @experimental
+ */
+export interface TargetOptions {
+  /**
+   * Whether to include targets for discarded tabs.
+   *
+   * @defaultValue `false`
+   * @experimental
+   */
+  includeDiscarded?: boolean;
+}
+
+/**
+ * @public
  */
 export interface WaitForTargetOptions {
   /**
@@ -663,8 +677,10 @@ export abstract class Browser extends EventEmitter<BrowserEvents> {
    * In case of multiple {@link BrowserContext | browser contexts}, this returns
    * all {@link Target | targets} in all
    * {@link BrowserContext | browser contexts}.
+   *
+   * @param options - Options to filter the returned targets.
    */
-  abstract targets(): Target[];
+  abstract targets(options?: TargetOptions): Target[];
 
   /**
    * Gets the {@link Target | target} associated with the
