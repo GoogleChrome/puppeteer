@@ -132,13 +132,6 @@ export class BidiBrowserContext extends BrowserContext {
     page.trustedEmitter.on(PageEvent.Close, () => {
       this.#pages.delete(browsingContext);
     });
-    page.trustedEmitter.on(PageEvent.Request, request => {
-      try {
-        this.trustedEmitter.emit(BrowserContextEvent.Request, request);
-      } catch (error) {
-        this.#logger?.(DEBUG_PREFIXES.error)?.(error);
-      }
-    });
 
     // -- Target stuff starts here --
     const pageTarget = new BidiPageTarget(page, this.#logger);

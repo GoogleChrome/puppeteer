@@ -6,6 +6,8 @@
 import type {Protocol} from 'devtools-protocol';
 import type * as Bidi from 'webdriver-bidi-protocol';
 
+import {BrowserEvent} from '../api/Browser.js';
+import {BrowserContextEvent} from '../api/BrowserContext.js';
 import type {CDPSession} from '../api/CDPSession.js';
 import type {
   ContinueRequestOverridesInternal,
@@ -130,7 +132,23 @@ export class BidiHTTPRequest extends HTTPRequest {
     });
     this.#request.on('authenticate', this.#handleAuthentication);
 
-    this.#frame.page().trustedEmitter.emit(PageEvent.Request, this);
+    const page = this.#frame.page();
+    page.trustedEmitter.emit(PageEvent.Request, this);
+    // Emit context before browser so that the order matches CDP. Context and
+    // browser listeners must not break request handling, so errors are
+    // logged instead of thrown.
+    try {
+      page
+        .browserContext()
+        .trustedEmitter.emit(BrowserContextEvent.Request, this);
+    } catch (error) {
+      this.#logger?.(DEBUG_PREFIXES.error)?.(error);
+    }
+    try {
+      page.browser().emit(BrowserEvent.Request, this);
+    } catch (error) {
+      this.#logger?.(DEBUG_PREFIXES.error)?.(error);
+    }
   }
 
   protected canBeIntercepted(): boolean {

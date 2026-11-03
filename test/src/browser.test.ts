@@ -266,6 +266,36 @@ describe('Browser specs', function () {
       expect(request.frame()).toBe(page.mainFrame());
     });
 
+    it('should emit context events before browser events', async () => {
+      const {browser, context, page, server} = await getTestState();
+
+      const order: string[] = [];
+      const record = (source: string) => {
+        return (request: HTTPRequest) => {
+          if (request.url() === server.EMPTY_PAGE) {
+            order.push(source);
+          }
+        };
+      };
+      const onBrowser = record('browser');
+      const onContext = record('context');
+      const onPage = record('page');
+      browser.on('request', onBrowser);
+      context.on('request', onContext);
+      page.on('request', onPage);
+      try {
+        await page.goto(server.EMPTY_PAGE);
+
+        // Page listeners are deferred via the intercept action queue, so
+        // context and browser listeners run first.
+        expect(order).toEqual(['context', 'browser', 'page']);
+      } finally {
+        browser.off('request', onBrowser);
+        context.off('request', onContext);
+        page.off('request', onPage);
+      }
+    });
+
     it('should report requests from dedicated workers', async () => {
       const {browser, page, server} = await getTestState();
 
@@ -321,17 +351,27 @@ describe('Browser specs', function () {
         void request.continue();
       });
 
-      const throwing = () => {
+      let contextCalls = 0;
+      let browserCalls = 0;
+      const throwingContext = () => {
+        contextCalls++;
         throw new Error('listener error');
       };
-      context.on('request', throwing);
-      browser.on('request', throwing);
+      const throwingBrowser = () => {
+        browserCalls++;
+        throw new Error('listener error');
+      };
+      context.on('request', throwingContext);
+      browser.on('request', throwingBrowser);
       try {
         const response = await page.goto(server.EMPTY_PAGE);
 
         expect(response!.ok()).toBe(true);
+        expect(contextCalls).toBeGreaterThan(0);
+        expect(browserCalls).toBeGreaterThan(0);
       } finally {
-        browser.off('request', throwing);
+        context.off('request', throwingContext);
+        browser.off('request', throwingBrowser);
       }
     });
   });

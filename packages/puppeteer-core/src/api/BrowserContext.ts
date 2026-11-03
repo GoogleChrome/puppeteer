@@ -63,13 +63,18 @@ export const enum BrowserContextEvent {
    * a {@link HTTPRequest} instance.
    *
    * @remarks
-   * Use {@link HTTPRequest.page}, {@link HTTPRequest.frame} or
-   * {@link HTTPRequest.worker} to identify the originating context.
-   * Requests from dedicated workers have no page or frame: use
-   * {@link HTTPRequest.worker} for them.
-   * Events are only delivered for pages that Puppeteer has attached to,
-   * e.g. via {@link BrowserContext.pages} or {@link Target.page}.
-   * Requests from service workers and shared workers are not reported.
+   * Use {@link HTTPRequest.page} or {@link HTTPRequest.frame} to identify
+   * the originating context. Requests from dedicated workers have no page
+   * or frame: use {@link HTTPRequest.worker} for them. Dedicated worker
+   * requests and {@link HTTPRequest.worker} are not supported with
+   * WebDriver BiDi.
+   *
+   * With CDP, events are only delivered for pages that have a {@link Page}
+   * instance, e.g. created via {@link BrowserContext.pages} or {@link Target.page}.
+   * Requests issued before the instance exists, such as the initial
+   * navigation of a popup, are not reported. With WebDriver BiDi, requests
+   * from all pages are reported. Requests from service workers and shared
+   * workers are not reported.
    *
    * These listeners only observe requests. Do not call
    * `request.continue()`, `abort()` or `respond()` from them: they are not
