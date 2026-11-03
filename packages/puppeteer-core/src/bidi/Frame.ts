@@ -176,6 +176,13 @@ export class BidiFrame extends Frame {
         return;
       }
       if (isConsoleLogEntry(entry)) {
+        // Chromium sets `source.context` of dedicated worker logs to the frame
+        // that created the worker, so they pass the context check above. Since
+        // BidiWorkerRealm emits them with the correct worker and realm we can
+        // skip them here.
+        if (this.#isWorkerRealm(entry.source.realm)) {
+          return;
+        }
         const page = this.page();
         if (
           !page.listenerCount(PageEvent.Console) &&
@@ -226,6 +233,14 @@ export class BidiFrame extends Frame {
       });
       this.page().trustedEmitter.emit(PageEvent.WorkerCreated, worker);
     });
+  }
+
+  #isWorkerRealm(realmId: string): boolean {
+    return this.page()
+      .workers()
+      .some(worker => {
+        return worker.mainRealm().realm.id === realmId;
+      });
   }
 
   #createFrameTarget(browsingContext: BrowsingContext) {

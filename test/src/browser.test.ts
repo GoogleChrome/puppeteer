@@ -271,6 +271,57 @@ describe('Browser specs', function () {
       expect(message.worker()).toBeNull();
     });
 
+    it('should report console messages from dedicated workers', async () => {
+      const {browser, page, context} = await getTestState();
+
+      const received = {
+        page: [] as ConsoleMessage[],
+        context: [] as ConsoleMessage[],
+        browser: [] as ConsoleMessage[],
+      };
+      const collect = (into: ConsoleMessage[]) => {
+        return (message: ConsoleMessage) => {
+          if (message.text() === 'from-worker') {
+            into.push(message);
+          }
+        };
+      };
+      page.on('console', collect(received.page));
+      context.on('console', collect(received.context));
+      const browserListener = collect(received.browser);
+      browser.on('console', browserListener);
+
+      try {
+        // `done` is logged after `from-worker`, so by the time it arrives every
+        // delivery of `from-worker` has been emitted.
+        const [worker] = await Promise.all([
+          waitEvent<WebWorker>(page, 'workercreated'),
+          waitEvent<ConsoleMessage>(browser, 'console', message => {
+            return message.text() === 'done';
+          }),
+          page.evaluate(() => {
+            return new Worker(
+              `data:text/javascript,console.log('from-worker');console.log('done')`,
+            );
+          }),
+        ]);
+
+        // Each level receives the same message exactly once.
+        expect(received.page).toHaveLength(1);
+        expect(received.context).toHaveLength(1);
+        expect(received.browser).toHaveLength(1);
+        const [message] = received.browser;
+        expect(received.page[0]).toBe(message);
+        expect(received.context[0]).toBe(message);
+
+        expect(message!.worker()).toBe(worker);
+        expect(message!.page()).toBeNull();
+        expect(message!.frame()).toBeNull();
+      } finally {
+        browser.off('console', browserListener);
+      }
+    });
+
     it('should report console messages from service workers', async () => {
       const {browser, page, server, context} = await getTestState();
 
