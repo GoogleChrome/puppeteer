@@ -441,6 +441,7 @@ describe('Page', function () {
             resolve({
               latitude: position.coords.latitude,
               longitude: position.coords.longitude,
+              accuracy: position.coords.accuracy,
             });
           });
         });
@@ -448,6 +449,7 @@ describe('Page', function () {
       expect(geolocation).toEqual({
         latitude: 10,
         longitude: 10,
+        accuracy: 0,
       });
     });
     it('should remove the override when called with null', async () => {

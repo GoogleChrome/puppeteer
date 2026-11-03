@@ -376,7 +376,7 @@ export class BidiPage extends Page {
       coordinates: {
         latitude: options.latitude,
         longitude: options.longitude,
-        accuracy: options.accuracy,
+        accuracy,
       },
     });
   }
