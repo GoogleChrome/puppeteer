@@ -43,6 +43,8 @@ Use [ConsoleMessage.page()](./puppeteer.consolemessage.page.md), [ConsoleMessage
 
 Events are only delivered for pages and workers that Puppeteer has attached to, e.g. via [BrowserContext.pages()](./puppeteer.browsercontext.pages.md) or [Target.page()](./puppeteer.target.page.md). Registering the listener before attaching guarantees that console messages replayed by the browser on attachment are not lost.
 
+With WebDriver BiDi, console messages that the browser replays while connecting are delivered once, right after [Puppeteer.connect()](./puppeteer.puppeteer.connect.md) resolves: register the listener before awaiting anything else, or they are missed. Replayed messages can be delivered after messages logged later.
+
 Service workers and shared workers are not attached automatically: their console messages are only delivered after [Target.worker()](./puppeteer.target.worker.md) has been called for their target. With WebDriver BiDi, their console messages are not reported.
 
 The [arguments](./puppeteer.consolemessage.args.md) are shared with listeners registered on [Page](./puppeteer.page.md), [WebWorker](./puppeteer.webworker.md) and [Browser](./puppeteer.browser.md). Disposing them in one listener invalidates them for all other listeners.
