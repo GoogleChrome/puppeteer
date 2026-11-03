@@ -17,3 +17,7 @@ class HTTPRequest {
 **Returns:**
 
 [WebWorker](./puppeteer.webworker.md) \| null
+
+## Remarks
+
+Not supported with WebDriver BiDi.

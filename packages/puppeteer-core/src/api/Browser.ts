@@ -34,6 +34,7 @@ import {asyncDisposeSymbol, disposeSymbol} from '../util/disposable.js';
 
 import type {BrowserContext} from './BrowserContext.js';
 import type {Extension} from './Extension.js';
+import type {HTTPRequest} from './HTTPRequest.js';
 import type {Page} from './Page.js';
 import type {Target} from './Target.js';
 /**
@@ -205,6 +206,29 @@ export const enum BrowserEvent {
    * @internal
    */
   TargetDiscovered = 'targetdiscovered',
+  /**
+   * Emitted when any page in the browser issues a request. Contains a
+   * {@link HTTPRequest} instance.
+   *
+   * @remarks
+   * Use {@link HTTPRequest.page}, {@link HTTPRequest.frame} or
+   * {@link HTTPRequest.worker} to identify the originating context.
+   * Requests from dedicated workers have no page or frame: use
+   * {@link HTTPRequest.worker} for them.
+   * Events are only delivered for pages that Puppeteer has attached to,
+   * e.g. via {@link Browser.pages} or {@link Target.page}. Requests from
+   * service workers and shared workers are not reported.
+   *
+   * These listeners only observe requests. Do not call
+   * `request.continue()`, `abort()` or `respond()` from them: they are not
+   * coordinated with page-level handlers (see
+   * {@link https://pptr.dev/guides/network-interception#cooperative-intercept-mode | cooperative intercept mode}).
+   * To intercept requests, use {@link Page.setRequestInterception} with a
+   * {@link PageEvent.Request} listener.
+   *
+   * @experimental
+   */
+  Request = 'request',
 }
 
 /**
@@ -215,6 +239,7 @@ export interface BrowserEvents extends Record<EventType, unknown> {
   [BrowserEvent.TargetCreated]: Target;
   [BrowserEvent.TargetDestroyed]: Target;
   [BrowserEvent.TargetChanged]: Target;
+  [BrowserEvent.Request]: HTTPRequest;
   /**
    * @internal
    */

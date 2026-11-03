@@ -721,6 +721,34 @@ describe('OOPIF', function () {
     await expect(testResponse!.text()).resolves.toMatch("I'm an OOPIF");
   });
 
+  it('should report requests from OOP iframes to the browser and context', async () => {
+    const {server, page, context, browser} = state;
+
+    await page.goto(server.EMPTY_PAGE);
+    const frame = await attachFrame(
+      page,
+      'frame1',
+      server.CROSS_PROCESS_PREFIX + '/empty.html',
+    );
+
+    const url = server.CROSS_PROCESS_PREFIX + '/one-style.css';
+    const [browserRequest, contextRequest] = await Promise.all([
+      waitEvent<HTTPRequest>(browser, 'request', request => {
+        return request.url() === url;
+      }),
+      waitEvent<HTTPRequest>(context, 'request', request => {
+        return request.url() === url;
+      }),
+      frame.evaluate(async (url: string) => {
+        await fetch(url, {cache: 'no-store'});
+      }, url),
+    ]);
+
+    expect(browserRequest).toBe(contextRequest);
+    expect(browserRequest.frame()).toBe(frame);
+    expect(browserRequest.page()).toBe(page);
+  });
+
   it('should continue intercepted requests from workers in OOPIFs', async () => {
     const {server, page} = state;
 

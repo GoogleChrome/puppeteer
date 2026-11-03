@@ -5,8 +5,11 @@
  */
 
 import expect from 'expect';
+import type {HTTPRequest} from 'puppeteer-core/internal/api/HTTPRequest.js';
+import type {WebWorker} from 'puppeteer-core/internal/api/WebWorker.js';
 
 import {getTestState, launch, setupTestBrowserHooks} from './mocha-utils.js';
+import {waitEvent} from './utils.js';
 
 describe('Browser specs', function () {
   setupTestBrowserHooks();
@@ -245,6 +248,91 @@ describe('Browser specs', function () {
 
       // Cleanup.
       await browser.removeScreen(screenInfo.id);
+    });
+  });
+
+  describe('Browser.on("request")', function () {
+    it('should report requests from pages', async () => {
+      const {browser, page, server} = await getTestState();
+
+      const [request] = await Promise.all([
+        waitEvent<HTTPRequest>(browser, 'request', request => {
+          return request.url() === server.EMPTY_PAGE;
+        }),
+        page.goto(server.EMPTY_PAGE),
+      ]);
+
+      expect(request.page()).toBe(page);
+      expect(request.frame()).toBe(page.mainFrame());
+    });
+
+    it('should report requests from dedicated workers', async () => {
+      const {browser, page, server} = await getTestState();
+
+      const [worker] = await Promise.all([
+        waitEvent<WebWorker>(page, 'workercreated'),
+        page.goto(server.PREFIX + '/worker/worker.html'),
+      ]);
+      const [request] = await Promise.all([
+        waitEvent<HTTPRequest>(browser, 'request', request => {
+          return request.url() === server.PREFIX + '/one-style.css';
+        }),
+        worker.evaluate((url: string) => {
+          return fetch(url);
+        }, server.PREFIX + '/one-style.css'),
+      ]);
+
+      expect(request.worker()).toBe(worker);
+      expect(request.page()).toBeNull();
+    });
+
+    it('should not interfere with request interception', async () => {
+      const {browser, page, server} = await getTestState();
+
+      await page.setRequestInterception(true);
+      page.on('request', request => {
+        void request.continue();
+      });
+
+      const requests: HTTPRequest[] = [];
+      const listener = (request: HTTPRequest) => {
+        if (request.url() === server.EMPTY_PAGE) {
+          requests.push(request);
+        }
+      };
+      browser.on('request', listener);
+      try {
+        const response = await page.goto(server.EMPTY_PAGE);
+
+        expect(response!.ok()).toBe(true);
+        expect(requests).toHaveLength(1);
+        expect(requests[0]!.page()).toBe(page);
+        expect(requests[0]!.isInterceptResolutionHandled()).toBe(true);
+      } finally {
+        browser.off('request', listener);
+      }
+    });
+
+    it('should not block request interception when a listener throws', async () => {
+      const {browser, context, page, server} = await getTestState();
+
+      await page.setRequestInterception(true);
+      page.on('request', request => {
+        void request.continue();
+      });
+
+      const throwing = () => {
+        throw new Error('listener error');
+      };
+      context.on('request', throwing);
+      browser.on('request', throwing);
+      try {
+        const response = await page.goto(server.EMPTY_PAGE);
+
+        expect(response!.ok()).toBe(true);
+      } finally {
+        browser.off('request', throwing);
+      }
     });
   });
 });
