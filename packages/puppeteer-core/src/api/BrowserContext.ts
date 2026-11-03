@@ -10,6 +10,7 @@ import {
   merge,
   raceWith,
 } from '../../third_party/rxjs/rxjs.js';
+import type {ConsoleMessage} from '../common/ConsoleMessage.js';
 import type {
   Cookie,
   CookieData,
@@ -59,6 +60,37 @@ export const enum BrowserContextEvent {
    */
   TargetDestroyed = 'targetdestroyed',
   /**
+   * Emitted when JavaScript within any page or worker in the browser context
+   * calls one of the console API methods, e.g. `console.log` or
+   * `console.dir`. Contains a {@link ConsoleMessage} instance.
+   *
+   * @remarks
+   * Use {@link ConsoleMessage.page}, {@link ConsoleMessage.frame} or
+   * {@link ConsoleMessage.worker} to identify the originating context.
+   * Messages from workers have no page or frame: use
+   * {@link ConsoleMessage.worker} for them. Messages logged by the browser
+   * itself (e.g. network errors or violations) can have no page, frame or
+   * worker.
+   *
+   * Events are only delivered for pages and workers that Puppeteer has
+   * attached to, e.g. via {@link BrowserContext.pages} or
+   * {@link Target.page}. Registering the listener before attaching
+   * guarantees that console messages replayed by the browser on attachment
+   * are not lost.
+   *
+   * Service workers and shared workers are not attached automatically:
+   * their console messages are only delivered after {@link Target.worker}
+   * has been called for their target. With WebDriver BiDi, their console
+   * messages are not reported.
+   *
+   * The {@link ConsoleMessage.args | arguments} are shared with listeners
+   * registered on {@link Page}, {@link WebWorker} and {@link Browser}.
+   * Disposing them in one listener invalidates them for all other listeners.
+   *
+   * @experimental
+   */
+  Console = 'console',
+  /**
    * Emitted when any page in the browser context issues a request. Contains
    * a {@link HTTPRequest} instance.
    *
@@ -95,6 +127,7 @@ export interface BrowserContextEvents extends Record<EventType, unknown> {
   [BrowserContextEvent.TargetChanged]: Target;
   [BrowserContextEvent.TargetCreated]: Target;
   [BrowserContextEvent.TargetDestroyed]: Target;
+  [BrowserContextEvent.Console]: ConsoleMessage;
   [BrowserContextEvent.Request]: HTTPRequest;
 }
 

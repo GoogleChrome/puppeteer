@@ -243,6 +243,9 @@ export class BidiBrowser extends Browser {
         this.trustedEmitter.emit(BrowserEvent.TargetDestroyed, target);
       },
     );
+    browserContext.trustedEmitter.on(BrowserContextEvent.Console, message => {
+      this.trustedEmitter.emit(BrowserEvent.Console, message);
+    });
 
     return browserContext;
   }

@@ -613,8 +613,7 @@ export class CdpPage extends Page {
       });
     }
     if (source !== 'worker') {
-      this.emit(
-        PageEvent.Console,
+      this.#emitConsoleMessage(
         new ConsoleMessage(
           convertConsoleMessageLevel(level),
           text,
@@ -996,7 +995,7 @@ export class CdpPage extends Page {
       world.environment instanceof WebWorker &&
       world.environment.listenerCount(WebWorkerEvent.Console) > 0;
 
-    if (!hasPageConsoleListeners) {
+    if (!hasPageConsoleListeners && !this.#hasBrowserConsoleListeners()) {
       if (!hasWorkerConsoleListeners) {
         // eslint-disable-next-line max-len -- The comment is long.
         // eslint-disable-next-line @puppeteer/use-using -- These are not owned by this function.
@@ -1019,10 +1018,26 @@ export class CdpPage extends Page {
       frame = world.environment;
     }
 
-    this.emit(
-      PageEvent.Console,
+    this.#emitConsoleMessage(
       createConsoleMessage(event, values, targetId, frame),
     );
+  }
+
+  #hasBrowserConsoleListeners(): boolean {
+    return (
+      this.browserContext().listenerCount(BrowserContextEvent.Console) > 0 ||
+      this.browser().listenerCount(BrowserEvent.Console) > 0
+    );
+  }
+
+  /**
+   * Emits the message on the page and bubbles it up to the browser context
+   * and the browser.
+   */
+  #emitConsoleMessage(message: ConsoleMessage): void {
+    this.emit(PageEvent.Console, message);
+    this.browserContext().emit(BrowserContextEvent.Console, message);
+    this.browser().emit(BrowserEvent.Console, message);
   }
 
   async #onBindingCalled(
