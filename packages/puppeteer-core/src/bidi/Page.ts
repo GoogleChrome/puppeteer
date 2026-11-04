@@ -512,6 +512,7 @@ export class BidiPage extends Page {
       pageRanges: ranges,
       scale,
       preferCSSPageSize,
+      waitForFonts,
     } = parsePDFOptions(options, 'cm');
     const pageRanges = ranges
       ? ranges.split(',').map(range => {
@@ -519,15 +520,17 @@ export class BidiPage extends Page {
         })
       : [];
 
-    await firstValueFrom(
-      from(
-        this.mainFrame()
-          .isolatedRealm()
-          .evaluate(() => {
-            return document.fonts.ready;
-          }),
-      ).pipe(raceWith(timeout(ms))),
-    );
+    if (waitForFonts) {
+      await firstValueFrom(
+        from(
+          this.mainFrame()
+            .isolatedRealm()
+            .evaluate(() => {
+              return document.fonts.ready;
+            }),
+        ).pipe(raceWith(timeout(ms))),
+      );
+    }
 
     const data = await firstValueFrom(
       from(
