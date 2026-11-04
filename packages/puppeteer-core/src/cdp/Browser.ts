@@ -464,7 +464,7 @@ export class CdpBrowser extends BrowserBase {
     options?: CreatePageOptions,
   ): Promise<Page> {
     const hasTargets =
-      this.targets().filter(t => {
+      this.targets({includeDiscarded: true}).filter(t => {
         return t.browserContext().id === contextId;
       }).length > 0;
     const windowBounds =

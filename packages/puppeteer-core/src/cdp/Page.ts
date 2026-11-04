@@ -128,19 +128,25 @@ export class CdpPage extends Page {
     logger: Logger,
   ): Promise<CdpPage> {
     const page = new CdpPage(client, target, logger);
-    await page.#initialize();
-    if (defaultViewport) {
-      try {
-        await page.setViewport(defaultViewport);
-      } catch (err) {
-        if (isErrorLike(err) && isTargetClosedError(err)) {
-          page.logger?.(DEBUG_PREFIXES.error)?.(err);
-        } else {
-          throw err;
+    try {
+      await page.#initialize();
+      if (defaultViewport) {
+        try {
+          await page.setViewport(defaultViewport);
+        } catch (err) {
+          if (isErrorLike(err) && isTargetClosedError(err)) {
+            page.logger?.(DEBUG_PREFIXES.error)?.(err);
+          } else {
+            throw err;
+          }
         }
       }
+      return page;
+    } catch (err) {
+      page.#closed = true;
+      page.#subscriptions.dispose();
+      throw err;
     }
-    return page;
   }
 
   #closed = false;
@@ -274,22 +280,19 @@ export class CdpPage extends Page {
       if (this.#closed) {
         return;
       }
-      removeDiscardListener();
       this.#subscriptions.dispose();
       this.#sessionCloseDeferred.reject(new TargetCloseError('Target closed'));
+
+      for (const [sessionId, worker] of Array.from(this.#workers.entries())) {
+        this.#workers.delete(sessionId);
+        this.emit(PageEvent.WorkerDestroyed, worker);
+      }
 
       this.#closed = true;
       this.emit(PageEvent.Close, undefined);
     };
-    const removeDiscardListener =
-      this.#tabTarget._addDiscardListener(closePage);
-
-    void this.#tabTarget._isClosedDeferred
-      .valueOrThrow()
-      .then(closePage)
-      .catch(error => {
-        this.logger?.(DEBUG_PREFIXES.error)?.(error);
-      });
+    this.#subscriptions.defer(this.#tabTarget._addDiscardListener(closePage));
+    this.#subscriptions.defer(this.#tabTarget._addCloseListener(closePage));
 
     this.#setupPrimaryTargetListeners();
     this.#attachExistingTargets();
@@ -325,6 +328,7 @@ export class CdpPage extends Page {
     this.#primaryTargetClient = newSession;
     this.#primaryTarget = newSession.target();
     assert(this.#primaryTarget, 'Missing target on swap');
+    this.#primaryTarget.pagePromise = Promise.resolve(this);
     this.#keyboard.updateClient(newSession);
     this.#mouse.updateClient(newSession);
     this.#touchscreen.updateClient(newSession);

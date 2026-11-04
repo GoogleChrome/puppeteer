@@ -51,16 +51,19 @@ export abstract class Target {
 
   /**
    * If the target is not of type `"page"`, `"webview"` or `"background_page"`,
-   * returns `null`.
+   * or if the target is {@link Target.isDiscarded | discarded}, returns `null`.
    */
   async page(): Promise<Page | null> {
     return null;
   }
 
   /**
-   * Forcefully creates a page for a target of any type. It is useful if you
+   * Forcefully creates a page for an arbitrary target. It is useful if you
    * want to handle a CDP target of type `other` as a page. If you deal with a
    * regular page target, use {@link Target.page}.
+   *
+   * @throws Throws if the target is {@link Target.isDiscarded | discarded} or
+   * of type {@link TargetType.TAB | "tab"}.
    */
   abstract asPage(): Promise<Page>;
 
@@ -97,6 +100,9 @@ export abstract class Target {
 
   /**
    * Checks whether the browser tab of this target is discarded.
+   *
+   * @remarks
+   * Currently only supported for Chrome and the CDP protocol.
    *
    * @experimental
    */

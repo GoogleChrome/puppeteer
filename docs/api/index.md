@@ -1499,6 +1499,10 @@ WebDriver BiDi capabilities that are not set by Puppeteer itself.
 
 **_(Experimental)_**
 
+**Remarks:**
+
+Currently only supported for Chrome and the CDP protocol.
+
 </td></tr>
 <tr><td>
 

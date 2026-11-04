@@ -10,6 +10,10 @@ sidebar_label: TargetOptions
 export interface TargetOptions
 ```
 
+## Remarks
+
+Currently only supported for Chrome and the CDP protocol.
+
 ## Properties
 
 <table><thead><tr><th>
@@ -48,6 +52,10 @@ boolean
 </td><td>
 
 **_(Experimental)_** Whether to include targets for discarded tabs.
+
+**Remarks:**
+
+Currently only supported for Chrome and the CDP protocol.
 
 </td><td>
 

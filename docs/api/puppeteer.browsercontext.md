@@ -272,7 +272,7 @@ Sets the permission for a specific origin.
 
 </td><td>
 
-Gets all active [targets](./puppeteer.target.md) inside this [browser context](./puppeteer.browsercontext.md).
+Gets all active [targets](./puppeteer.target.md) inside this [browser context](./puppeteer.browsercontext.md), plus targets for discarded tabs when [TargetOptions.includeDiscarded](./puppeteer.targetoptions.md#includediscarded) is `true`.
 
 </td></tr>
 <tr><td>

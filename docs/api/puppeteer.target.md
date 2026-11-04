@@ -75,7 +75,7 @@ Description
 
 </td><td>
 
-Forcefully creates a page for a target of any type. It is useful if you want to handle a CDP target of type `other` as a page. If you deal with a regular page target, use [Target.page()](./puppeteer.target.page.md).
+Forcefully creates a page for an arbitrary target. It is useful if you want to handle a CDP target of type `other` as a page. If you deal with a regular page target, use [Target.page()](./puppeteer.target.page.md).
 
 </td></tr>
 <tr><td>
@@ -121,6 +121,10 @@ Creates a Chrome Devtools Protocol session attached to the target.
 
 **_(Experimental)_** Checks whether the browser tab of this target is discarded.
 
+**Remarks:**
+
+Currently only supported for Chrome and the CDP protocol.
+
 </td></tr>
 <tr><td>
 
@@ -141,7 +145,7 @@ Get the target that opened this target. Top-level targets return `null`.
 
 </td><td>
 
-If the target is not of type `"page"`, `"webview"` or `"background_page"`, returns `null`.
+If the target is not of type `"page"`, `"webview"` or `"background_page"`, or if the target is [discarded](./puppeteer.target.isdiscarded.md), returns `null`.
 
 </td></tr>
 <tr><td>

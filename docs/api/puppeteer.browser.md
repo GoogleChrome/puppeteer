@@ -493,9 +493,9 @@ Gets the [target](./puppeteer.target.md) associated with the [default browser co
 
 </td><td>
 
-Gets all active [targets](./puppeteer.target.md).
+Gets all active [targets](./puppeteer.target.md), plus targets for discarded tabs when [TargetOptions.includeDiscarded](./puppeteer.targetoptions.md#includediscarded) is `true`.
 
-In case of multiple [browser contexts](./puppeteer.browsercontext.md), this returns all [targets](./puppeteer.target.md) in all [browser contexts](./puppeteer.browsercontext.md).
+In case of multiple [browser contexts](./puppeteer.browsercontext.md), this returns all matching [targets](./puppeteer.target.md) in all [browser contexts](./puppeteer.browsercontext.md).
 
 </td></tr>
 <tr><td>

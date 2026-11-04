@@ -17,3 +17,7 @@ class Target {
 **Returns:**
 
 boolean
+
+## Remarks
+
+Currently only supported for Chrome and the CDP protocol.

@@ -527,6 +527,8 @@ describe('Target', function () {
 
       expect(reloadedTarget.type()).toBe('page');
       expect(reloadedTarget.isDiscarded()).toBe(false);
+      expect(destroyedTarget.isDiscarded()).toBe(true);
+      await expect(destroyedTarget.page()).resolves.toBeNull();
       expect(browser.targets()).toContain(reloadedTarget);
       const reloadedPage = await reloadedTarget.page();
       expect(reloadedPage).not.toBeNull();

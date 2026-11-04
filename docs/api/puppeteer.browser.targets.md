@@ -4,9 +4,9 @@ sidebar_label: Browser.targets
 
 # Browser.targets() method
 
-Gets all active [targets](./puppeteer.target.md).
+Gets all active [targets](./puppeteer.target.md), plus targets for discarded tabs when [TargetOptions.includeDiscarded](./puppeteer.targetoptions.md#includediscarded) is `true`.
 
-In case of multiple [browser contexts](./puppeteer.browsercontext.md), this returns all [targets](./puppeteer.target.md) in all [browser contexts](./puppeteer.browsercontext.md).
+In case of multiple [browser contexts](./puppeteer.browsercontext.md), this returns all matching [targets](./puppeteer.target.md) in all [browser contexts](./puppeteer.browsercontext.md).
 
 ### Signature
 

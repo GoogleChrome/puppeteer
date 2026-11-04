@@ -42,7 +42,6 @@ function isPageTargetBecomingPrimary(
   return (
     target.type() === TargetType.PAGE &&
     Boolean(target._subtype()) &&
-    target._subtype() !== 'discarded' &&
     !newTargetInfo.subtype
   );
 }
@@ -323,7 +322,11 @@ export class TargetManager
       target._initializedDeferred.value() === InitializationStatus.SUCCESS;
     const wasDiscarded = target.isDiscarded();
 
-    if (isPageTargetBecomingPrimary(target, event.targetInfo)) {
+    const becomingPrimary = isPageTargetBecomingPrimary(
+      target,
+      event.targetInfo,
+    );
+    if (becomingPrimary) {
       const session = target._session();
       assert(
         session,
@@ -333,6 +336,10 @@ export class TargetManager
     }
 
     target._targetInfoChanged(event.targetInfo);
+
+    if (becomingPrimary) {
+      this.emit(TargetManagerEvent.TargetAvailable, target);
+    }
 
     const isNowDiscarded = target.isDiscarded();
     if (target.type() === TargetType.TAB && wasDiscarded !== isNowDiscarded) {
@@ -346,12 +353,14 @@ export class TargetManager
         }
       } else {
         for (const childTarget of descendants) {
-          this.emit(TargetManagerEvent.TargetUndiscarded, childTarget);
+          if (!childTarget.isDiscarded()) {
+            this.emit(TargetManagerEvent.TargetUndiscarded, childTarget);
+          }
         }
       }
     }
 
-    if (wasInitialized && previousURL !== target.url()) {
+    if (!becomingPrimary && wasInitialized && previousURL !== target.url()) {
       this.emit(TargetManagerEvent.TargetChanged, {
         target,
         wasInitialized,

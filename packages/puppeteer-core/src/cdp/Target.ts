@@ -47,14 +47,17 @@ export class CdpTarget extends Target {
     ((isAutoAttachEmulated: boolean) => Promise<CdpCDPSession>) | undefined;
   #logger: Logger;
   #parentTarget?: CdpTarget;
+  #discarded = false;
   #childTargets = new Set<CdpTarget>();
   #discardListeners = new Set<() => void>();
+  #closeListeners = new Set<() => void>();
+  #watchingClose = false;
   _initializedDeferred = Deferred.create<InitializationStatus>();
   _isClosedDeferred = Deferred.create<void>();
   _targetId: string;
   _asPagePromise?: Promise<Page>;
   /** @internal */
-  pagePromise?: Promise<Page>;
+  pagePromise?: Promise<Page | null>;
 
   /**
    * To initialize the target for use, call initialize.
@@ -85,12 +88,26 @@ export class CdpTarget extends Target {
     }
   }
 
-  override async asPage(): Promise<Page> {
+  #throwIfDiscarded(): void {
     if (this.isDiscarded()) {
       throw new Error('Cannot create a page for a discarded target.');
     }
+  }
+
+  override async asPage(): Promise<Page> {
+    this.#throwIfDiscarded();
+    if (this.type() === TargetType.TAB) {
+      throw new Error('Cannot create a page for a tab target.');
+    }
     if (this.pagePromise) {
-      const page = await this.pagePromise;
+      let page: Page | null;
+      try {
+        page = await this.pagePromise;
+      } catch (error) {
+        this.#throwIfDiscarded();
+        throw error;
+      }
+      this.#throwIfDiscarded();
       if (page) {
         return page;
       }
@@ -102,10 +119,19 @@ export class CdpTarget extends Target {
           ? Promise.resolve(session)
           : this._sessionFactory()(/* isAutoAttachEmulated=*/ false)
       ).then(client => {
+        this.#throwIfDiscarded();
         return CdpPage._create(client, this, null, this.#logger);
       });
     }
-    return (await this._asPagePromise) ?? null;
+    let page: Page;
+    try {
+      page = await this._asPagePromise;
+    } catch (error) {
+      this.#throwIfDiscarded();
+      throw error;
+    }
+    this.#throwIfDiscarded();
+    return page;
   }
 
   _subtype(): string | undefined {
@@ -129,6 +155,12 @@ export class CdpTarget extends Target {
   }
 
   _removeChildTarget(target: CdpTarget): void {
+    if (target.#parentTarget === this) {
+      if (this.isDiscarded()) {
+        target.#discarded = true;
+      }
+      target.#parentTarget = undefined;
+    }
     this.#childTargets.delete(target);
   }
 
@@ -219,24 +251,73 @@ export class CdpTarget extends Target {
   }
 
   override isDiscarded(): boolean {
-    return (
-      this._subtype() === 'discarded' ||
-      Boolean(this.#parentTarget?.isDiscarded())
-    );
+    if (this.type() === TargetType.TAB) {
+      return this._subtype() === 'discarded';
+    }
+    return this.#discarded || Boolean(this.#parentTarget?.isDiscarded());
   }
 
   _addDiscardListener(listener: () => void): () => void {
+    if (this.isDiscarded()) {
+      let cancelled = false;
+      queueMicrotask(() => {
+        if (!cancelled) {
+          listener();
+        }
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
     this.#discardListeners.add(listener);
     return () => {
       this.#discardListeners.delete(listener);
     };
   }
 
+  _addCloseListener(listener: () => void): () => void {
+    if (this._isClosedDeferred.resolved()) {
+      let cancelled = false;
+      queueMicrotask(() => {
+        if (!cancelled) {
+          listener();
+        }
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
+    this.#closeListeners.add(listener);
+    if (!this.#watchingClose) {
+      this.#watchingClose = true;
+      void this._isClosedDeferred
+        .valueOrThrow()
+        .then(() => {
+          for (const closeListener of Array.from(this.#closeListeners)) {
+            if (this.#closeListeners.delete(closeListener)) {
+              closeListener();
+            }
+          }
+        })
+        .catch(error => {
+          this.#logger?.(DEBUG_PREFIXES.error)?.(error);
+        });
+    }
+    return () => {
+      this.#closeListeners.delete(listener);
+    };
+  }
+
   _onDiscarded(): void {
+    if (this.type() !== TargetType.TAB) {
+      this.#discarded = true;
+    }
     this.pagePromise = undefined;
     this._asPagePromise = undefined;
     for (const listener of Array.from(this.#discardListeners)) {
-      listener();
+      if (this.#discardListeners.delete(listener)) {
+        listener();
+      }
     }
   }
 
@@ -253,16 +334,7 @@ export class CdpTarget extends Target {
     if (this.type() === TargetType.TAB) {
       return Boolean(options?.includeDiscarded && this.isDiscarded());
     }
-    if (this.#parentTarget?.isDiscarded()) {
-      return false;
-    }
-    if (this._subtype() && this._subtype() !== 'discarded') {
-      return false;
-    }
-    if (!options?.includeDiscarded && this.isDiscarded()) {
-      return false;
-    }
-    return true;
+    return !this._subtype() && !this.isDiscarded();
   }
 
   protected _checkIfInitialized(): void {
@@ -315,11 +387,13 @@ export class PageTarget extends CdpTarget {
           return true;
         }
         const openerPage = await opener.pagePromise;
-        if (!openerPage.listenerCount(PageEvent.Popup)) {
+        if (!openerPage || !openerPage.listenerCount(PageEvent.Popup)) {
           return true;
         }
         const popupPage = await this.page();
-        openerPage.emit(PageEvent.Popup, popupPage);
+        if (popupPage) {
+          openerPage.emit(PageEvent.Popup, popupPage);
+        }
         return true;
       })
       .catch(error => {
@@ -329,7 +403,7 @@ export class PageTarget extends CdpTarget {
   }
 
   override async page(): Promise<Page | null> {
-    if (this.isDiscarded()) {
+    if (this.isDiscarded() || this.type() === TargetType.TAB) {
       return null;
     }
     if (!this.pagePromise) {
@@ -339,6 +413,9 @@ export class PageTarget extends CdpTarget {
           ? Promise.resolve(session)
           : this._sessionFactory()(/* isAutoAttachEmulated=*/ false)
       ).then(client => {
+        if (this.isDiscarded()) {
+          return null;
+        }
         return CdpPage._create(
           client,
           this,
@@ -347,7 +424,18 @@ export class PageTarget extends CdpTarget {
         );
       });
     }
-    return (await this.pagePromise) ?? null;
+    try {
+      const page = (await this.pagePromise) ?? null;
+      if (this.isDiscarded()) {
+        return null;
+      }
+      return page;
+    } catch (error) {
+      if (this.isDiscarded()) {
+        return null;
+      }
+      throw error;
+    }
   }
 
   override _checkIfInitialized(): void {
