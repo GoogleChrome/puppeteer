@@ -2360,6 +2360,26 @@ describe('Page', function () {
       });
       expect(error).toBeInstanceOf(TimeoutError);
     });
+
+    it('should not wait for fonts if waitForFonts is false', async () => {
+      const {page, server} = await getTestState();
+
+      await page.goto(server.EMPTY_PAGE);
+      // The font request never gets a response, so `document.fonts.ready`
+      // does not resolve.
+      server.setRoute('/never-loading-font.woff2', () => {});
+      await Promise.all([
+        server.waitForRequest('/never-loading-font.woff2'),
+        page.evaluate(url => {
+          const font = new FontFace('never-loading', `url(${url})`);
+          document.fonts.add(font);
+          void font.load();
+        }, server.PREFIX + '/never-loading-font.woff2'),
+      ]);
+
+      const pdf = await page.pdf({waitForFonts: false, timeout: 5_000});
+      expect(pdf.byteLength).toBeGreaterThan(0);
+    });
   });
 
   describe('Page.title', function () {
