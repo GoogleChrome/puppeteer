@@ -36,6 +36,12 @@ function createRequest(
         trustedEmitter: {
           emit() {},
         },
+        browserContext() {
+          return {trustedEmitter: {emit() {}}};
+        },
+        browser() {
+          return {trustedEmitter: {emit() {}}};
+        },
       };
     },
   } as unknown as BidiFrame;

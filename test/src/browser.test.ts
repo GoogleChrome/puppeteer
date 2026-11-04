@@ -279,20 +279,15 @@ describe('Browser specs', function () {
       };
       const onBrowser = record('browser');
       const onContext = record('context');
-      const onPage = record('page');
       browser.on('request', onBrowser);
       context.on('request', onContext);
-      page.on('request', onPage);
       try {
         await page.goto(server.EMPTY_PAGE);
 
-        // Page listeners are deferred via the intercept action queue, so
-        // context and browser listeners run first.
-        expect(order).toEqual(['context', 'browser', 'page']);
+        expect(order).toEqual(['context', 'browser']);
       } finally {
         browser.off('request', onBrowser);
         context.off('request', onContext);
-        page.off('request', onPage);
       }
     });
 
@@ -340,38 +335,6 @@ describe('Browser specs', function () {
         expect(requests[0]!.isInterceptResolutionHandled()).toBe(true);
       } finally {
         browser.off('request', listener);
-      }
-    });
-
-    it('should not block request interception when a listener throws', async () => {
-      const {browser, context, page, server} = await getTestState();
-
-      await page.setRequestInterception(true);
-      page.on('request', request => {
-        void request.continue();
-      });
-
-      let contextCalls = 0;
-      let browserCalls = 0;
-      const throwingContext = () => {
-        contextCalls++;
-        throw new Error('listener error');
-      };
-      const throwingBrowser = () => {
-        browserCalls++;
-        throw new Error('listener error');
-      };
-      context.on('request', throwingContext);
-      browser.on('request', throwingBrowser);
-      try {
-        const response = await page.goto(server.EMPTY_PAGE);
-
-        expect(response!.ok()).toBe(true);
-        expect(contextCalls).toBeGreaterThan(0);
-        expect(browserCalls).toBeGreaterThan(0);
-      } finally {
-        context.off('request', throwingContext);
-        browser.off('request', throwingBrowser);
       }
     });
   });

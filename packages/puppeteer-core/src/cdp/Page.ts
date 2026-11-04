@@ -227,16 +227,8 @@ export class CdpPage extends Page {
     );
     networkManagerEmitter.on(NetworkManagerEvent.Request, request => {
       this.emit(PageEvent.Request, request);
-      try {
-        this.browserContext().emit(BrowserContextEvent.Request, request);
-      } catch (error) {
-        this.logger?.(DEBUG_PREFIXES.error)?.(error);
-      }
-      try {
-        this.browser().emit(BrowserEvent.Request, request);
-      } catch (error) {
-        this.logger?.(DEBUG_PREFIXES.error)?.(error);
-      }
+      this.browserContext().emit(BrowserContextEvent.Request, request);
+      this.browser().emit(BrowserEvent.Request, request);
     });
     networkManagerEmitter.on(
       NetworkManagerEvent.RequestServedFromCache,

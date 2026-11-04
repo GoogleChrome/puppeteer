@@ -134,21 +134,10 @@ export class BidiHTTPRequest extends HTTPRequest {
 
     const page = this.#frame.page();
     page.trustedEmitter.emit(PageEvent.Request, this);
-    // Emit context before browser so that the order matches CDP. Context and
-    // browser listeners must not break request handling, so errors are
-    // logged instead of thrown.
-    try {
-      page
-        .browserContext()
-        .trustedEmitter.emit(BrowserContextEvent.Request, this);
-    } catch (error) {
-      this.#logger?.(DEBUG_PREFIXES.error)?.(error);
-    }
-    try {
-      page.browser().emit(BrowserEvent.Request, this);
-    } catch (error) {
-      this.#logger?.(DEBUG_PREFIXES.error)?.(error);
-    }
+    page
+      .browserContext()
+      .trustedEmitter.emit(BrowserContextEvent.Request, this);
+    page.browser().trustedEmitter.emit(BrowserEvent.Request, this);
   }
 
   protected canBeIntercepted(): boolean {
