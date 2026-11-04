@@ -41,6 +41,25 @@ jobs:
           workload_identity_provider: 'projects/305452601764/locations/global/workloadIdentityPools/builders/providers/github'
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
+      - name: Clean up stale releases from staging repo
+        run: |
+          # clean up stale releases from staging repo
+          packages=$(gcloud artifacts packages list \
+              --project="oss-exit-gate-prod" \
+              --location="us" \
+              --repository="puppeteer--npm" \
+              --format="value(name)" 2>/dev/null)
+
+          echo "${packages}" | xargs -r -I {} sh -c '
+              package_name=$(basename "{}")
+              echo "Deleting package: $package_name..."
+              gcloud artifacts packages delete "{}" \
+                  --project="\'"oss-exit-gate-prod"\'" \
+                  --location="\'"us"\'" \
+                  --repository="\'puppeteer--npm\'" \
+                  --quiet
+          '
+
       - name: Stage packages to Artifact Registry and trigger OSS Exit Gate
         env:
           ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
