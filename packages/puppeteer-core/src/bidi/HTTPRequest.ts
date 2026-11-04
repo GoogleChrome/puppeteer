@@ -6,6 +6,8 @@
 import type {Protocol} from 'devtools-protocol';
 import type * as Bidi from 'webdriver-bidi-protocol';
 
+import {BrowserEvent} from '../api/Browser.js';
+import {BrowserContextEvent} from '../api/BrowserContext.js';
 import type {CDPSession} from '../api/CDPSession.js';
 import type {
   ContinueRequestOverridesInternal,
@@ -130,7 +132,12 @@ export class BidiHTTPRequest extends HTTPRequest {
     });
     this.#request.on('authenticate', this.#handleAuthentication);
 
-    this.#frame.page().trustedEmitter.emit(PageEvent.Request, this);
+    const page = this.#frame.page();
+    page.trustedEmitter.emit(PageEvent.Request, this);
+    page
+      .browserContext()
+      .trustedEmitter.emit(BrowserContextEvent.Request, this);
+    page.browser().trustedEmitter.emit(BrowserEvent.Request, this);
   }
 
   protected canBeIntercepted(): boolean {

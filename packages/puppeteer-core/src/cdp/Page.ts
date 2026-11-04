@@ -8,8 +8,11 @@ import type {Protocol} from 'devtools-protocol';
 
 import {firstValueFrom, from, raceWith} from '../../third_party/rxjs/rxjs.js';
 import type {BluetoothEmulation} from '../api/BluetoothEmulation.js';
-import type {Browser, WindowId} from '../api/Browser.js';
-import type {BrowserContext} from '../api/BrowserContext.js';
+import {BrowserEvent, type Browser, type WindowId} from '../api/Browser.js';
+import {
+  BrowserContextEvent,
+  type BrowserContext,
+} from '../api/BrowserContext.js';
 import {CDPSessionEvent, type CDPSession} from '../api/CDPSession.js';
 import type {DeviceRequestPrompt} from '../api/DeviceRequestPrompt.js';
 import type {ElementHandle} from '../api/ElementHandle.js';
@@ -224,6 +227,8 @@ export class CdpPage extends Page {
     );
     networkManagerEmitter.on(NetworkManagerEvent.Request, request => {
       this.emit(PageEvent.Request, request);
+      this.browserContext().emit(BrowserContextEvent.Request, request);
+      this.browser().emit(BrowserEvent.Request, request);
     });
     networkManagerEmitter.on(
       NetworkManagerEvent.RequestServedFromCache,

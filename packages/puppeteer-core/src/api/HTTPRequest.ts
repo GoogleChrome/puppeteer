@@ -461,6 +461,9 @@ export abstract class HTTPRequest {
   /**
    * The worker that initiated the request, or null if the request
    * was not initiated by a worker.
+   *
+   * @remarks
+   * Not supported with WebDriver BiDi.
    */
   abstract worker(): WebWorker | null;
 

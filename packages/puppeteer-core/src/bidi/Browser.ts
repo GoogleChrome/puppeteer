@@ -146,8 +146,9 @@ export class BidiBrowser extends Browser {
     return browser;
   }
 
+  /** @internal */
   @bubble()
-  accessor #trustedEmitter = new EventEmitter<BrowserEvents>();
+  accessor trustedEmitter = new EventEmitter<BrowserEvents>();
 
   #process?: ChildProcess;
   #closeCallback?: BrowserCloseCallback;
@@ -185,8 +186,8 @@ export class BidiBrowser extends Browser {
     }
 
     this.#browserCore.once('disconnected', () => {
-      this.#trustedEmitter.emit(BrowserEvent.Disconnected, undefined);
-      this.#trustedEmitter.removeAllListeners();
+      this.trustedEmitter.emit(BrowserEvent.Disconnected, undefined);
+      this.trustedEmitter.removeAllListeners();
     });
     this.#process?.once('close', () => {
       this.#browserCore.dispose('Browser process exited.', true);
@@ -227,19 +228,19 @@ export class BidiBrowser extends Browser {
     browserContext.trustedEmitter.on(
       BrowserContextEvent.TargetCreated,
       target => {
-        this.#trustedEmitter.emit(BrowserEvent.TargetCreated, target);
+        this.trustedEmitter.emit(BrowserEvent.TargetCreated, target);
       },
     );
     browserContext.trustedEmitter.on(
       BrowserContextEvent.TargetChanged,
       target => {
-        this.#trustedEmitter.emit(BrowserEvent.TargetChanged, target);
+        this.trustedEmitter.emit(BrowserEvent.TargetChanged, target);
       },
     );
     browserContext.trustedEmitter.on(
       BrowserContextEvent.TargetDestroyed,
       target => {
-        this.#trustedEmitter.emit(BrowserEvent.TargetDestroyed, target);
+        this.trustedEmitter.emit(BrowserEvent.TargetDestroyed, target);
       },
     );
 

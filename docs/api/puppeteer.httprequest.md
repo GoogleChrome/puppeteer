@@ -442,5 +442,9 @@ The URL of the request
 
 The worker that initiated the request, or null if the request was not initiated by a worker.
 
+**Remarks:**
+
+Not supported with WebDriver BiDi.
+
 </td></tr>
 </tbody></table>

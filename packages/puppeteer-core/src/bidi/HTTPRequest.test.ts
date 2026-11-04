@@ -36,6 +36,12 @@ function createRequest(
         trustedEmitter: {
           emit() {},
         },
+        browserContext() {
+          return {trustedEmitter: {emit() {}}};
+        },
+        browser() {
+          return {trustedEmitter: {emit() {}}};
+        },
       };
     },
   } as unknown as BidiFrame;
@@ -116,6 +122,12 @@ function createCanceledRequest(): BidiHTTPRequest {
         _credentials: null,
         trustedEmitter: {
           emit() {},
+        },
+        browserContext() {
+          return {trustedEmitter: {emit() {}}};
+        },
+        browser() {
+          return {trustedEmitter: {emit() {}}};
         },
       };
     },
