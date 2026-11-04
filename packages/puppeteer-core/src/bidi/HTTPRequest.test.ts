@@ -123,6 +123,12 @@ function createCanceledRequest(): BidiHTTPRequest {
         trustedEmitter: {
           emit() {},
         },
+        browserContext() {
+          return {trustedEmitter: {emit() {}}};
+        },
+        browser() {
+          return {trustedEmitter: {emit() {}}};
+        },
       };
     },
   } as unknown as BidiFrame;
