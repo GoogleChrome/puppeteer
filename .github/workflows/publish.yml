@@ -54,9 +54,9 @@ jobs:
               package_name=$(basename "{}")
               echo "Deleting package: $package_name..."
               gcloud artifacts packages delete "{}" \
-                  --project="\'"oss-exit-gate-prod"\'" \
-                  --location="\'"us"\'" \
-                  --repository="\'puppeteer--npm\'" \
+                  --project=""oss-exit-gate-prod"" \
+                  --location=""us"" \
+                  --repository="puppeteer--npm" \
                   --quiet
           '
 
