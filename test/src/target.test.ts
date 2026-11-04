@@ -396,6 +396,8 @@ describe('Target', function () {
       const listenerCount = client.listenerCount('Page.frameNavigated');
 
       await session.send('Page.handleJavaScriptDialog', {accept: true});
+      // Let the renderer run the commands of the failed attempt first.
+      await session.send('Runtime.evaluate', {expression: '0'});
       const popup = await target[method]();
       expect(
         await popup!.evaluate(() => {
