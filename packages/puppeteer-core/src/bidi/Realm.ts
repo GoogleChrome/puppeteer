@@ -468,7 +468,7 @@ export class BidiWorkerRealm extends BidiRealm {
         this.#worker,
       );
       this.#worker.emit(WebWorkerEvent.Console, message);
-      page.trustedEmitter.emit(PageEvent.Console, message);
+      page.emitConsoleMessage(message);
     });
   }
 
