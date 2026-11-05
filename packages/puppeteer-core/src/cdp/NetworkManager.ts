@@ -641,7 +641,17 @@ export class NetworkManager extends EventEmitter<NetworkManagerEvents> {
     fetchClient = client,
     fromMemoryCache = false,
   ): void {
-    this.#networkEventManager.forgetRequestWillBeSent(event.requestId);
+    // With request interception enabled, Network.loadingFailed may have
+    // arrived before the Fetch.requestPaused that created this request.
+    const storedRequestWillBeSent =
+      this.#networkEventManager.getRequestWillBeSent(event.requestId);
+    const loadingFailed =
+      storedRequestWillBeSent?.event === event
+        ? storedRequestWillBeSent.loadingFailed
+        : undefined;
+    if (storedRequestWillBeSent?.event === event) {
+      this.#networkEventManager.forgetRequestWillBeSent(event.requestId);
+    }
     let redirectChain: CdpHTTPRequest[] = [];
     if (event.redirectResponse) {
       // We want to emit a response and requestfinished for the
@@ -710,11 +720,6 @@ export class NetworkManager extends EventEmitter<NetworkManagerEvents> {
     }
 
     request._fromMemoryCache = fromMemoryCache;
-    // With request interception enabled, Network.loadingFailed may have
-    // arrived before the Fetch.requestPaused that created this request.
-    const loadingFailed = this.#networkEventManager.getRequestWillBeSent(
-      event.requestId,
-    )?.loadingFailed;
     this.#networkEventManager.storeRequest(event.requestId, request);
     this.emit(NetworkManagerEvent.Request, request);
     const interceptionsFinalized = request.finalizeInterceptions();
