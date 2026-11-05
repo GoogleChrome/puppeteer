@@ -20,6 +20,8 @@ import {
   raceWith,
   switchMap,
 } from '../../third_party/rxjs/rxjs.js';
+import {BrowserEvent} from '../api/Browser.js';
+import {BrowserContextEvent} from '../api/BrowserContext.js';
 import type {CDPSession} from '../api/CDPSession.js';
 import type {DeviceRequestPrompt} from '../api/DeviceRequestPrompt.js';
 import {
@@ -174,17 +176,19 @@ export class BidiFrame extends Frame {
         return;
       }
       if (isConsoleLogEntry(entry)) {
-        if (!this.page().listenerCount(PageEvent.Console)) {
+        const page = this.page();
+        if (
+          !page.listenerCount(PageEvent.Console) &&
+          !page.browserContext().listenerCount(BrowserContextEvent.Console) &&
+          !page.browser().listenerCount(BrowserEvent.Console)
+        ) {
           return;
         }
         const args = entry.args.map(arg => {
           return this.mainRealm().createHandle(arg);
         });
 
-        this.page().trustedEmitter.emit(
-          PageEvent.Console,
-          getConsoleMessage(entry, args, this),
-        );
+        page.emitConsoleMessage(getConsoleMessage(entry, args, this));
       } else if (isJavaScriptLogEntry(entry)) {
         const error = new Error(entry.text ?? '');
 

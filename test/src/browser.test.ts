@@ -7,6 +7,7 @@
 import expect from 'expect';
 import type {HTTPRequest} from 'puppeteer-core/internal/api/HTTPRequest.js';
 import type {WebWorker} from 'puppeteer-core/internal/api/WebWorker.js';
+import type {ConsoleMessage} from 'puppeteer-core/internal/common/ConsoleMessage.js';
 
 import {getTestState, launch, setupTestBrowserHooks} from './mocha-utils.js';
 import {waitEvent} from './utils.js';
@@ -248,6 +249,51 @@ describe('Browser specs', function () {
 
       // Cleanup.
       await browser.removeScreen(screenInfo.id);
+    });
+  });
+
+  describe('Browser.on("console")', function () {
+    it('should report console messages from pages', async () => {
+      const {browser, page} = await getTestState();
+
+      const [message] = await Promise.all([
+        waitEvent<ConsoleMessage>(browser, 'console', message => {
+          return message.text() === 'from-page';
+        }),
+        page.evaluate(() => {
+          console.log('from-page');
+        }),
+      ]);
+
+      expect(message.type()).toBe('log');
+      expect(message.page()).toBe(page);
+      expect(message.frame()).toBe(page.mainFrame());
+      expect(message.worker()).toBeNull();
+    });
+
+    it('should report console messages from service workers', async () => {
+      const {browser, page, server, context} = await getTestState();
+
+      await page.goto(server.PREFIX + '/serviceworkers/empty/sw.html');
+      const target = await context.waitForTarget(
+        target => {
+          return target.type() === 'service_worker';
+        },
+        {timeout: 3000},
+      );
+      const worker = (await target.worker())!;
+
+      const [message] = await Promise.all([
+        waitEvent<ConsoleMessage>(browser, 'console', message => {
+          return message.text() === 'from-service-worker';
+        }),
+        worker.evaluate(() => {
+          console.log('from-service-worker');
+        }),
+      ]);
+
+      expect(message.worker()).toBe(worker);
+      expect(message.page()).toBeNull();
     });
   });
 

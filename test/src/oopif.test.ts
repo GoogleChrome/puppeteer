@@ -10,6 +10,7 @@ import {CDPSessionEvent} from 'puppeteer-core/internal/api/CDPSession.js';
 import type {HTTPRequest} from 'puppeteer-core/internal/api/HTTPRequest.js';
 import type {Page} from 'puppeteer-core/internal/api/Page.js';
 import type {WebWorker} from 'puppeteer-core/internal/api/WebWorker.js';
+import type {ConsoleMessage} from 'puppeteer-core/internal/common/ConsoleMessage.js';
 
 import {setupSeparateTestBrowserHooks} from './mocha-utils.js';
 import {
@@ -719,6 +720,33 @@ describe('OOPIF', function () {
     await page.waitForSelector('iframe');
 
     await expect(testResponse!.text()).resolves.toMatch("I'm an OOPIF");
+  });
+
+  it('should report console messages from OOP iframes to the browser and context', async () => {
+    const {server, page, context, browser} = state;
+
+    await page.goto(server.EMPTY_PAGE);
+    const frame = await attachFrame(
+      page,
+      'frame1',
+      server.CROSS_PROCESS_PREFIX + '/empty.html',
+    );
+
+    const [browserMessage, contextMessage] = await Promise.all([
+      waitEvent<ConsoleMessage>(browser, 'console', message => {
+        return message.text() === 'from-oopif';
+      }),
+      waitEvent<ConsoleMessage>(context, 'console', message => {
+        return message.text() === 'from-oopif';
+      }),
+      frame.evaluate(() => {
+        console.log('from-oopif');
+      }),
+    ]);
+
+    expect(browserMessage).toBe(contextMessage);
+    expect(browserMessage.frame()).toBe(frame);
+    expect(browserMessage.page()).toBe(page);
   });
 
   it('should report requests from OOP iframes to the browser and context', async () => {
