@@ -130,6 +130,13 @@ export class CdpBrowser extends BrowserBase {
   #extensions = new Map<string, Extension>();
   #version?: Deferred<Protocol.Browser.GetVersionResponse>;
   #hasNetworkRestrictions = false;
+  /**
+   * Targets for which the browser emitted `targetcreated` and not yet
+   * `targetdestroyed`. This is not the same as
+   * `CdpTarget._isTargetExposed()`: a target can become exposed or hidden
+   * during its life, but each target gets at most one pair of events.
+   */
+  #announcedTargets = new Set<CdpTarget>();
   #subscriptions = new DisposableStack();
 
   constructor(
@@ -378,11 +385,19 @@ export class CdpBrowser extends BrowserBase {
   };
 
   #onAttachedToTarget = async (target: CdpTarget) => {
+    if (!target._isTargetExposed()) {
+      return;
+    }
     if (
-      target._isTargetExposed() &&
       (await target._initializedDeferred.valueOrThrow()) ===
-        InitializationStatus.SUCCESS
+        InitializationStatus.SUCCESS &&
+      // The target can change while it initializes, and the target manager
+      // can report a target again when a prerendered target becomes primary.
+      target._isTargetExposed() &&
+      !target._isClosedDeferred.resolved() &&
+      !this.#announcedTargets.has(target)
     ) {
+      this.#announcedTargets.add(target);
       this.emit(BrowserEvent.TargetCreated, target);
       target.browserContext().emit(BrowserContextEvent.TargetCreated, target);
     }
@@ -392,9 +407,9 @@ export class CdpBrowser extends BrowserBase {
     target._initializedDeferred.resolve(InitializationStatus.ABORTED);
     target._isClosedDeferred.resolve();
     if (
-      target._isTargetExposed() &&
       (await target._initializedDeferred.valueOrThrow()) ===
-        InitializationStatus.SUCCESS
+        InitializationStatus.SUCCESS &&
+      this.#announcedTargets.delete(target)
     ) {
       this.emit(BrowserEvent.TargetDestroyed, target);
       target.browserContext().emit(BrowserContextEvent.TargetDestroyed, target);
@@ -402,6 +417,9 @@ export class CdpBrowser extends BrowserBase {
   };
 
   #onTargetChanged = ({target}: {target: CdpTarget}): void => {
+    if (!target._isTargetExposed()) {
+      return;
+    }
     this.emit(BrowserEvent.TargetChanged, target);
     target.browserContext().emit(BrowserContextEvent.TargetChanged, target);
   };
