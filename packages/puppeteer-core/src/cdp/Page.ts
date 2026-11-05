@@ -30,6 +30,7 @@ import type {
 import {
   Page,
   PageEvent,
+  supportedMetrics,
   type GeolocationOptions,
   type MediaFeature,
   type Metrics,
@@ -1441,22 +1442,6 @@ interface TabEmbedderData {
   tabPinned?: boolean;
   tabGroupId?: string;
 }
-
-const supportedMetrics = new Set<string>([
-  'Timestamp',
-  'Documents',
-  'Frames',
-  'JSEventListeners',
-  'Nodes',
-  'LayoutCount',
-  'RecalcStyleCount',
-  'LayoutDuration',
-  'RecalcStyleDuration',
-  'ScriptDuration',
-  'TaskDuration',
-  'JSHeapUsedSize',
-  'JSHeapTotalSize',
-]);
 
 /** @see https://w3c.github.io/webdriver-bidi/#rectangle-intersection */
 function getIntersectionRect(
