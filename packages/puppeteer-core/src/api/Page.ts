@@ -1887,6 +1887,12 @@ export abstract class Page extends EventEmitter<PageEvents> {
    *
    * - `JSHeapTotalSize` : Total JavaScript heap size, in bytes.
    *
+   * - `DomContentLoaded` : The timestamp when the DOMContentLoaded event was
+   *   fired, in monotonic time (seconds).
+   *
+   * - `NavigationStart` : The timestamp when the navigation started, in
+   *   monotonic time (seconds).
+   *
    * @remarks
    * All timestamps are in monotonic time: monotonically increasing time
    * in seconds since an arbitrary point in the past.
@@ -3592,6 +3598,8 @@ export const supportedMetrics = new Set<string>([
   'TaskDuration',
   'JSHeapUsedSize',
   'JSHeapTotalSize',
+  'DomContentLoaded',
+  'NavigationStart',
 ]);
 
 /** @see https://w3c.github.io/webdriver-bidi/#normalize-rect */
