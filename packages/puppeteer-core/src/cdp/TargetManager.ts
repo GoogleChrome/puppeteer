@@ -332,7 +332,14 @@ export class TargetManager
         session,
         'Target that is being activated is missing a CDPSession.',
       );
-      session.parentSession()?.emit(CDPSessionEvent.Swapped, session);
+      const parentSession = session.parentSession();
+      // Chrome detaches the old primary page target before it activates the
+      // prerendered target. The activated target replaces the old one, so the
+      // detach was not caused by a discard.
+      if (parentSession instanceof CdpCDPSession) {
+        parentSession.target()._clearDetachedChildTargets();
+      }
+      parentSession?.emit(CDPSessionEvent.Swapped, session);
     }
 
     target._targetInfoChanged(event.targetInfo);
@@ -342,22 +349,12 @@ export class TargetManager
     }
 
     const isNowDiscarded = target.isDiscarded();
-    if (target.type() === TargetType.TAB && wasDiscarded !== isNowDiscarded) {
-      const descendants = this.#getDescendantTargets(target);
-      if (isNowDiscarded) {
-        this.#finishInitializationIfReady(target._targetId);
-        target._onDiscarded();
-        for (const childTarget of descendants) {
-          childTarget._onDiscarded();
-          this.emit(TargetManagerEvent.TargetDiscarded, childTarget);
-        }
-      } else {
-        for (const childTarget of descendants) {
-          if (!childTarget.isDiscarded()) {
-            this.emit(TargetManagerEvent.TargetUndiscarded, childTarget);
-          }
-        }
-      }
+    if (target.type() === TargetType.TAB && !wasDiscarded && isNowDiscarded) {
+      // Chrome can detach the page targets before it reports the `discarded`
+      // subtype on the tab, and other tab updates can arrive in between.
+      // Treat the page targets that left the tab without a replacement as
+      // discarded as well.
+      this.#onTabDiscarded(target, target._takeDetachedChildTargets());
     }
 
     if (!becomingPrimary && wasInitialized && previousURL !== target.url()) {
@@ -368,6 +365,40 @@ export class TargetManager
       });
     }
   };
+
+  #onTabDiscarded(tabTarget: CdpTarget, detachedTargets: CdpTarget[]): void {
+    const descendants = this.#getDescendantTargets(tabTarget);
+    for (const detachedTarget of detachedTargets) {
+      descendants.push(
+        detachedTarget,
+        ...this.#getDescendantTargets(detachedTarget),
+      );
+    }
+    this.#finishInitializationIfReady(tabTarget._targetId);
+    tabTarget._onDiscarded();
+    for (const childTarget of descendants) {
+      childTarget._onDiscarded();
+      this.emit(TargetManagerEvent.TargetDiscarded, childTarget);
+    }
+    // A discarded tab has no live page. Detach child sessions that are still
+    // attached so that a reload always creates new child targets and the
+    // closed pages do not keep listeners on reused sessions.
+    const tabSession = tabTarget._session();
+    if (!tabSession) {
+      return;
+    }
+    for (const childTarget of Array.from(tabTarget._childTargets())) {
+      const childSession = childTarget._session();
+      if (!childSession || childSession.detached) {
+        continue;
+      }
+      void tabSession
+        .send('Target.detachFromTarget', {sessionId: childSession.id()})
+        .catch(error => {
+          this.#logger?.(DEBUG_PREFIXES.error)?.(error);
+        });
+    }
+  }
 
   #getDescendantTargets(root: CdpTarget): CdpTarget[] {
     const descendants: CdpTarget[] = [];

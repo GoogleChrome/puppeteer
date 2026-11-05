@@ -221,10 +221,6 @@ export class CdpBrowser extends BrowserBase {
       this.#onTargetDiscarded,
     );
     targetManagerEmitter.on(
-      TargetManagerEvent.TargetUndiscarded,
-      this.#onAttachedToTarget,
-    );
-    targetManagerEmitter.on(
       TargetManagerEvent.TargetChanged,
       this.#onTargetChanged,
     );
@@ -327,7 +323,6 @@ export class CdpBrowser extends BrowserBase {
   #createTarget = (
     targetInfo: Protocol.Target.TargetInfo,
     session?: CdpCDPSession,
-    parentSession?: CdpCDPSession,
   ) => {
     const {browserContextId} = targetInfo;
     const context =
@@ -342,7 +337,6 @@ export class CdpBrowser extends BrowserBase {
     const createSession = (isAutoAttachEmulated: boolean) => {
       return this.#connection._createSession(targetInfo, isAutoAttachEmulated);
     };
-    const parentTarget = parentSession?.target();
     const otherTarget = new OtherTarget(
       targetInfo,
       session,
@@ -350,9 +344,14 @@ export class CdpBrowser extends BrowserBase {
       this.#targetManager,
       createSession,
       this.logger,
-      parentTarget,
     );
-    if (targetInfo.url && isDevToolsPageTarget(targetInfo.url)) {
+    // A DevTools window has a `"tab"` target and a child `"page"` target with
+    // the same URL. Only the `"page"` target can be used as a page.
+    if (
+      targetInfo.type !== 'tab' &&
+      targetInfo.url &&
+      isDevToolsPageTarget(targetInfo.url)
+    ) {
       return new DevToolsTarget(
         targetInfo,
         session,
@@ -361,7 +360,6 @@ export class CdpBrowser extends BrowserBase {
         createSession,
         this.#defaultViewport ?? null,
         this.logger,
-        parentTarget,
       );
     }
     if (this.#isPageTargetCallback(otherTarget)) {
@@ -373,7 +371,6 @@ export class CdpBrowser extends BrowserBase {
         createSession,
         this.#defaultViewport ?? null,
         this.logger,
-        parentTarget,
       );
     }
     if (
@@ -387,7 +384,6 @@ export class CdpBrowser extends BrowserBase {
         this.#targetManager,
         createSession,
         this.logger,
-        parentTarget,
       );
     }
     return otherTarget;
@@ -463,10 +459,9 @@ export class CdpBrowser extends BrowserBase {
     contextId?: string,
     options?: CreatePageOptions,
   ): Promise<Page> {
-    const hasTargets =
-      this.targets({includeDiscarded: true}).filter(t => {
-        return t.browserContext().id === contextId;
-      }).length > 0;
+    const hasTargets = this.targets({includeDiscarded: true}).some(t => {
+      return t.browserContext().id === contextId;
+    });
     const windowBounds =
       options?.type === 'window' ? options.windowBounds : undefined;
     const {targetId} = await this.#connection.send('Target.createTarget', {

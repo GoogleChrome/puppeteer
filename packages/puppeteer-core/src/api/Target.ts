@@ -99,9 +99,26 @@ export abstract class Target {
   abstract opener(): Target | undefined;
 
   /**
-   * Checks whether the browser tab of this target is discarded.
+   * Checks whether this target is discarded.
    *
    * @remarks
+   * A target of type {@link TargetType.TAB | "tab"} is discarded while
+   * Chrome keeps its tab discarded. A target of type
+   * {@link TargetType.PAGE | "page"} is discarded if Chrome closed it because
+   * it discarded the tab of the target. When Chrome reloads a discarded tab, it
+   * creates new targets that are not discarded.
+   *
+   * Targets inside a page, such as out-of-process iframes and dedicated
+   * workers, close together with the page. Do not use this method to find out
+   * why such a target closed: it can return `false` for them even if Chrome
+   * discarded their tab.
+   *
+   * The value of a closed target can change from `false` to `true` after the
+   * {@link BrowserEvent.TargetDestroyed | targetdestroyed} event, because Chrome
+   * can close the target before it reports that the tab is discarded. In rare
+   * cases, a target that closed for another reason, with no target to replace
+   * it, is also reported as discarded if Chrome discards its tab later.
+   *
    * Currently only supported for Chrome and the CDP protocol.
    *
    * @experimental

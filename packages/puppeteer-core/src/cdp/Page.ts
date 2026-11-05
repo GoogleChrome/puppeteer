@@ -172,6 +172,8 @@ export class CdpPage extends Page {
   #workers = new Map<string, CdpWebWorker>();
   #fileChooserDeferreds = new Set<Deferred<FileChooser>>();
   #sessionCloseDeferred = Deferred.create<never, TargetCloseError>();
+  #removePrimaryTargetDiscardListener?: () => void;
+  #closePage: () => void;
   #serviceWorkerBypassed = false;
   #userDragInterceptionEnabled = false;
 
@@ -280,6 +282,12 @@ export class CdpPage extends Page {
       if (this.#closed) {
         return;
       }
+      // When Chrome discards the tab, the page can close before the worker
+      // sessions disconnect. Fail the pending worker requests while the page
+      // still knows its workers and still forwards `requestfailed`.
+      for (const worker of this.#workers.values()) {
+        this.#frameManager.networkManager.releaseClient(worker.client);
+      }
       this.#subscriptions.dispose();
       this.#sessionCloseDeferred.reject(new TargetCloseError('Target closed'));
 
@@ -291,11 +299,27 @@ export class CdpPage extends Page {
       this.#closed = true;
       this.emit(PageEvent.Close, undefined);
     };
-    this.#subscriptions.defer(this.#tabTarget._addDiscardListener(closePage));
+    this.#closePage = closePage;
+    // Watch the primary page target instead of the tab target: a reloaded page
+    // target can attach before its tab clears the `discarded` subtype.
+    this.#watchPrimaryTargetDiscard();
+    this.#subscriptions.defer(() => {
+      this.#removePrimaryTargetDiscardListener?.();
+      this.#removePrimaryTargetDiscardListener = undefined;
+    });
     this.#subscriptions.defer(this.#tabTarget._addCloseListener(closePage));
 
     this.#setupPrimaryTargetListeners();
     this.#attachExistingTargets();
+  }
+
+  #watchPrimaryTargetDiscard(): void {
+    if (this.#subscriptions.disposed) {
+      return;
+    }
+    this.#removePrimaryTargetDiscardListener?.();
+    this.#removePrimaryTargetDiscardListener =
+      this.#primaryTarget._addDiscardListener(this.#closePage);
   }
 
   #attachExistingTargets(): void {
@@ -329,6 +353,7 @@ export class CdpPage extends Page {
     this.#primaryTarget = newSession.target();
     assert(this.#primaryTarget, 'Missing target on swap');
     this.#primaryTarget.pagePromise = Promise.resolve(this);
+    this.#watchPrimaryTargetDiscard();
     this.#keyboard.updateClient(newSession);
     this.#mouse.updateClient(newSession);
     this.#touchscreen.updateClient(newSession);
@@ -1384,6 +1409,11 @@ export class CdpPage extends Page {
   override async close(
     options: {runBeforeUnload?: boolean} = {runBeforeUnload: undefined},
   ): Promise<void> {
+    // The page target of a discarded tab no longer exists in the browser, and
+    // the page already emitted `close`.
+    if (this.#closed && this.#primaryTarget.isDiscarded()) {
+      return;
+    }
     using _guard = await this.browserContext().waitForScreenshotOperations();
     const connection = this.#primaryTargetClient.connection();
     assert(

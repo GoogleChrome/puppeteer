@@ -46,9 +46,21 @@ export class CdpTarget extends Target {
   #sessionFactory:
     ((isAutoAttachEmulated: boolean) => Promise<CdpCDPSession>) | undefined;
   #logger: Logger;
-  #parentTarget?: CdpTarget;
   #discarded = false;
   #childTargets = new Set<CdpTarget>();
+  /**
+   * Child targets that detached from this tab while it was active and left it
+   * without a primary (non-speculative) child. Chrome can detach the page
+   * targets of a tab before it reports the `discarded` subtype, so these
+   * targets are marked as discarded when this tab becomes discarded. A new
+   * child target clears this set.
+   *
+   * A page target that detached for another reason and had no replacement is
+   * also marked as discarded if the tab is discarded later. This only changes
+   * `isDiscarded()` of a target that is already gone, but it makes sure that
+   * the page of a discarded tab always closes.
+   */
+  #detachedChildTargets = new Set<CdpTarget>();
   #discardListeners = new Set<() => void>();
   #closeListeners = new Set<() => void>();
   #watchingClose = false;
@@ -72,7 +84,6 @@ export class CdpTarget extends Target {
     sessionFactory:
       ((isAutoAttachEmulated: boolean) => Promise<CdpCDPSession>) | undefined,
     logger: Logger,
-    parentTarget?: CdpTarget,
   ) {
     super(logger);
     this.#session = session;
@@ -82,7 +93,6 @@ export class CdpTarget extends Target {
     this._targetId = targetInfo.targetId;
     this.#sessionFactory = sessionFactory;
     this.#logger = logger;
-    this.#parentTarget = parentTarget;
     if (this.#session) {
       this.#session.setTarget(this);
     }
@@ -148,20 +158,43 @@ export class CdpTarget extends Target {
   }
 
   _addChildTarget(target: CdpTarget): void {
-    if (!target.#parentTarget) {
-      target.#parentTarget = this;
-    }
+    this.#detachedChildTargets.clear();
     this.#childTargets.add(target);
   }
 
   _removeChildTarget(target: CdpTarget): void {
-    if (target.#parentTarget === this) {
-      if (this.isDiscarded()) {
-        target.#discarded = true;
-      }
-      target.#parentTarget = undefined;
+    if (!this.#childTargets.delete(target)) {
+      return;
     }
-    this.#childTargets.delete(target);
+    if (this.type() !== TargetType.TAB || this.isDiscarded()) {
+      return;
+    }
+    // A prerender activation detaches the old primary page target while the
+    // activated target stays attached. Such a detach is never a discard.
+    const hasPrimaryChild = Array.from(this.#childTargets).some(child => {
+      return !child._subtype();
+    });
+    if (!hasPrimaryChild) {
+      this.#detachedChildTargets.add(target);
+    }
+  }
+
+  /**
+   * Returns and forgets the child targets that detached without a
+   * replacement since the last child target attached.
+   */
+  _takeDetachedChildTargets(): CdpTarget[] {
+    const targets = Array.from(this.#detachedChildTargets);
+    this.#detachedChildTargets.clear();
+    return targets;
+  }
+
+  /**
+   * Forgets the child targets that detached without a replacement, for
+   * example when a prerendered child target replaces them.
+   */
+  _clearDetachedChildTargets(): void {
+    this.#detachedChildTargets.clear();
   }
 
   _childTargets(): ReadonlySet<CdpTarget> {
@@ -254,7 +287,10 @@ export class CdpTarget extends Target {
     if (this.type() === TargetType.TAB) {
       return this._subtype() === 'discarded';
     }
-    return this.#discarded || Boolean(this.#parentTarget?.isDiscarded());
+    // Non-tab targets only become discarded when their tab transitions from
+    // active to discarded (see `_onDiscarded`). A target that attaches to a
+    // tab after that transition belongs to the reloaded tab.
+    return this.#discarded;
   }
 
   _addDiscardListener(listener: () => void): () => void {
@@ -332,7 +368,15 @@ export class CdpTarget extends Target {
 
   _isTargetExposed(options?: TargetOptions): boolean {
     if (this.type() === TargetType.TAB) {
-      return Boolean(options?.includeDiscarded && this.isDiscarded());
+      // Expose a discarded tab only while it has no active child target. A
+      // reloaded child can attach before the tab clears its discarded subtype.
+      return Boolean(
+        options?.includeDiscarded &&
+        this.isDiscarded() &&
+        Array.from(this.#childTargets).every(child => {
+          return child.isDiscarded();
+        }),
+      );
     }
     return !this._subtype() && !this.isDiscarded();
   }
@@ -358,7 +402,6 @@ export class PageTarget extends CdpTarget {
     sessionFactory: (isAutoAttachEmulated: boolean) => Promise<CdpCDPSession>,
     defaultViewport: Viewport | null,
     logger: Logger,
-    parentTarget?: CdpTarget,
   ) {
     super(
       targetInfo,
@@ -367,7 +410,6 @@ export class PageTarget extends CdpTarget {
       targetManager,
       sessionFactory,
       logger,
-      parentTarget,
     );
     this.#defaultViewport = defaultViewport ?? undefined;
   }

@@ -1975,7 +1975,7 @@
     "platforms": ["darwin", "linux", "win32"],
     "parameters": ["cdp", "chrome"],
     "expectations": ["SKIP"],
-    "comment": "Blocked on https://crrev.com/c/8619182 rolling into Chrome"
+    "comment": "Blocked on https://crrev.com/c/8619182 and https://crrev.com/c/8691309 rolling into Chrome"
   },
   {
     "testIdPattern": "[target.test] Target should report when a service worker is created and destroyed",

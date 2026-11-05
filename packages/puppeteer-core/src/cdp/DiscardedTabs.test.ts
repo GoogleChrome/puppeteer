@@ -11,13 +11,14 @@ import expect from 'expect';
 
 import type {TargetFilterCallback} from '../api/Browser.js';
 import {CDPSessionEvent} from '../api/CDPSession.js';
+import type {HTTPRequest} from '../api/HTTPRequest.js';
 import {PageEvent} from '../api/Page.js';
 import type {Target} from '../api/Target.js';
 import type {ConnectionTransport} from '../common/ConnectionTransport.js';
 
 import {CdpBrowser} from './Browser.js';
 import {Connection} from './Connection.js';
-import {DevToolsTarget, type CdpTarget} from './Target.js';
+import {DevToolsTarget, OtherTarget, type CdpTarget} from './Target.js';
 
 interface SentMessage {
   id: number;
@@ -452,6 +453,319 @@ describe('Discarded tabs', function () {
     expect(h.browser.targets({includeDiscarded: true})).toEqual([]);
   });
 
+  it('should expose a reloaded page target that attaches before the tab clears its discarded subtype', async () => {
+    const seenInFilter: Array<{id: string; discarded: boolean}> = [];
+    const h = createHarness({
+      targetFilter: target => {
+        seenInFilter.push({
+          id: (target as CdpTarget)._targetId,
+          discarded: target.isDiscarded(),
+        });
+        return !target.isDiscarded();
+      },
+    });
+    await h.attach();
+
+    const createdTargets: CdpTarget[] = [];
+    h.browser.on('targetcreated', target => {
+      createdTargets.push(target as CdpTarget);
+    });
+
+    const tab = h.attachTab('early');
+    await h.flush();
+    tab.discard();
+    await h.flush();
+    expect(targetIds(h.browser.targets({includeDiscarded: true}))).toEqual([
+      'tab-early',
+    ]);
+
+    // The new page target attaches while the tab still reports `discarded`.
+    h.attachChild(tab.tabSessionId, 'page-early-2', 'page');
+    await h.flush();
+
+    expect(seenInFilter).toContainEqual({
+      id: 'page-early-2',
+      discarded: false,
+    });
+    expect(targetIds(createdTargets)).toEqual(['page-early', 'page-early-2']);
+    const reloadedPageTarget = createdTargets[1]!;
+    expect(reloadedPageTarget.isDiscarded()).toBe(false);
+    expect(h.browser.targets()).toEqual([reloadedPageTarget]);
+    expect(h.browser.targets({includeDiscarded: true})).toEqual([
+      reloadedPageTarget,
+    ]);
+    await expect(reloadedPageTarget.page()).resolves.not.toBeNull();
+    await h.flush();
+    const reloadedPage = (await reloadedPageTarget.page())!;
+    expect(reloadedPage.isClosed()).toBe(false);
+
+    tab.updateTab({subtype: undefined});
+    await h.flush();
+
+    expect(targetIds(createdTargets)).toEqual(['page-early', 'page-early-2']);
+    expect(h.browser.targets({includeDiscarded: true})).toEqual([
+      reloadedPageTarget,
+    ]);
+  });
+
+  it('should detach a page target that stays attached when its tab is discarded', async () => {
+    const h = createHarness();
+    await h.attach();
+
+    const createdTargets: CdpTarget[] = [];
+    const destroyedEvents: Array<{target: CdpTarget; discarded: boolean}> = [];
+    h.browser.on('targetcreated', target => {
+      createdTargets.push(target as CdpTarget);
+    });
+    h.browser.on('targetdestroyed', target => {
+      destroyedEvents.push({
+        target: target as CdpTarget,
+        discarded: target.isDiscarded(),
+      });
+    });
+
+    const tab = h.attachTab('retained');
+    await h.flush();
+    const pageTarget = createdTargets[0]!;
+    const initialPage = (await pageTarget.page())!;
+    const sentBefore = h.transport.sentMessages.length;
+
+    tab.discard(false);
+    await h.flush();
+
+    expect(initialPage.isClosed()).toBe(true);
+    expect(pageTarget.isDiscarded()).toBe(true);
+    expect(destroyedEvents).toEqual([{target: pageTarget, discarded: true}]);
+    expect(
+      h.sentTo(tab.tabSessionId, sentBefore).map(msg => {
+        return {method: msg.method, params: msg.params};
+      }),
+    ).toEqual([
+      {
+        method: 'Target.detachFromTarget',
+        params: {sessionId: tab.pageSessionId},
+      },
+    ]);
+    expect(h.browser.targets()).toEqual([]);
+    expect(targetIds(h.browser.targets({includeDiscarded: true}))).toEqual([
+      'tab-retained',
+    ]);
+
+    // Chrome confirms the detach. A reload then creates a new page target.
+    tab.detachPage();
+    await h.flush();
+    expect(destroyedEvents).toHaveLength(1);
+
+    tab.reload('page-retained-2');
+    await h.flush();
+
+    expect(targetIds(createdTargets)).toEqual([
+      'page-retained',
+      'page-retained-2',
+    ]);
+    expect(pageTarget.isDiscarded()).toBe(true);
+    await expect(pageTarget.page()).resolves.toBeNull();
+    const reloadedPage = await createdTargets[1]!.page();
+    expect(reloadedPage).not.toBeNull();
+    expect(reloadedPage!.isClosed()).toBe(false);
+  });
+
+  it('should handle Chrome detaching the page target before reporting the discarded subtype', async () => {
+    const h = createHarness();
+    await h.attach();
+
+    const createdTargets: CdpTarget[] = [];
+    const destroyedTargets: CdpTarget[] = [];
+    h.browser.on('targetcreated', target => {
+      createdTargets.push(target as CdpTarget);
+    });
+    h.browser.on('targetdestroyed', target => {
+      destroyedTargets.push(target as CdpTarget);
+    });
+
+    const tab = h.attachTab('detach-first');
+    await h.flush();
+    const pageTarget = createdTargets[0]!;
+    const page = (await pageTarget.page())!;
+    let closeCount = 0;
+    page.on(PageEvent.Close, () => {
+      closeCount++;
+    });
+
+    // Chrome sends Target.detachedFromTarget before Target.targetInfoChanged.
+    tab.detachPage();
+    tab.updateTab({subtype: 'discarded'});
+    await h.flush();
+
+    expect(closeCount).toBe(1);
+    expect(page.isClosed()).toBe(true);
+    expect(pageTarget.isDiscarded()).toBe(true);
+    expect(destroyedTargets).toEqual([pageTarget]);
+    await expect(pageTarget.page()).resolves.toBeNull();
+    await expect(pageTarget.asPage()).rejects.toThrow(
+      'Cannot create a page for a discarded target.',
+    );
+    expect(h.browser.targets()).toEqual([]);
+    expect(targetIds(h.browser.targets({includeDiscarded: true}))).toEqual([
+      'tab-detach-first',
+    ]);
+    await expect(h.browser.pages()).resolves.toEqual([]);
+
+    tab.reload('page-detach-first-2');
+    await h.flush();
+
+    expect(targetIds(createdTargets)).toEqual([
+      'page-detach-first',
+      'page-detach-first-2',
+    ]);
+    expect(pageTarget.isDiscarded()).toBe(true);
+    expect(createdTargets[1]!.isDiscarded()).toBe(false);
+  });
+
+  for (const primaryDetachesFirst of [true, false]) {
+    it(`should close the page if Chrome detaches the ${primaryDetachesFirst ? 'primary' : 'prerender'} page target first before reporting the discarded subtype`, async () => {
+      const h = createHarness();
+      await h.attach();
+
+      const destroyedTargets: CdpTarget[] = [];
+      h.browser.on('targetdestroyed', target => {
+        destroyedTargets.push(target as CdpTarget);
+      });
+
+      const tab = h.attachTab('prerender-discard');
+      await h.flush();
+      const pageTarget = h.browser.targets()[0]!;
+      const page = (await pageTarget.page())!;
+      let closeCount = 0;
+      page.on(PageEvent.Close, () => {
+        closeCount++;
+      });
+
+      const prerender = h.attachChild(
+        tab.tabSessionId,
+        'page-prerender-discard-2',
+        'page',
+        {subtype: 'prerender', url: 'https://example.com/2'},
+      );
+      await h.flush();
+
+      if (primaryDetachesFirst) {
+        tab.detachPage();
+        tab.detachPage(prerender.sessionId);
+      } else {
+        tab.detachPage(prerender.sessionId);
+        tab.detachPage();
+      }
+      tab.updateTab({subtype: 'discarded'});
+      await h.flush();
+
+      expect(closeCount).toBe(1);
+      expect(page.isClosed()).toBe(true);
+      expect(pageTarget.isDiscarded()).toBe(true);
+      expect(destroyedTargets).toEqual([pageTarget]);
+      await expect(pageTarget.page()).resolves.toBeNull();
+      expect(targetIds(h.browser.targets({includeDiscarded: true}))).toEqual([
+        'tab-prerender-discard',
+      ]);
+    });
+  }
+
+  for (const detachFirst of [false, true]) {
+    it(`should resolve page.close() on a discarded page without closing the target (${detachFirst ? 'detach first' : 'subtype first'})`, async () => {
+      const h = createHarness();
+      await h.attach();
+
+      const tab = h.attachTab(`close-${detachFirst ? 'detach' : 'subtype'}`);
+      await h.flush();
+      const page = (await h.browser.targets()[0]!.page())!;
+
+      if (detachFirst) {
+        tab.detachPage();
+        tab.updateTab({subtype: 'discarded'});
+      } else {
+        tab.discard();
+      }
+      await h.flush();
+      expect(page.isClosed()).toBe(true);
+
+      // Chrome rejects Target.closeTarget for the page target that no longer
+      // exists.
+      h.transport.errorFor = msg => {
+        return msg.method === 'Target.closeTarget'
+          ? 'No target with given id found'
+          : undefined;
+      };
+      const sentBefore = h.transport.sentMessages.length;
+      await expect(page.close()).resolves.toBeUndefined();
+      expect(
+        h.transport.sentMessages.slice(sentBefore).filter(msg => {
+          return msg.method === 'Target.closeTarget';
+        }),
+      ).toEqual([]);
+    });
+  }
+
+  it('should close the page if the tab changes between the page detach and the discard', async () => {
+    const h = createHarness();
+    await h.attach();
+
+    const destroyedTargets: CdpTarget[] = [];
+    h.browser.on('targetdestroyed', target => {
+      destroyedTargets.push(target as CdpTarget);
+    });
+
+    const tab = h.attachTab('update-between');
+    await h.flush();
+    const pageTarget = h.browser.targets()[0]!;
+    const page = (await pageTarget.page())!;
+    let closeCount = 0;
+    page.on(PageEvent.Close, () => {
+      closeCount++;
+    });
+
+    tab.detachPage();
+    await h.flush();
+    // Another tab update arrives before Chrome reports the discard.
+    tab.updateTab({title: 'Updated title'});
+    await h.flush();
+    expect(page.isClosed()).toBe(false);
+    tab.updateTab({subtype: 'discarded'});
+    await h.flush();
+
+    expect(closeCount).toBe(1);
+    expect(page.isClosed()).toBe(true);
+    expect(pageTarget.isDiscarded()).toBe(true);
+    expect(destroyedTargets).toEqual([pageTarget]);
+    await expect(pageTarget.page()).resolves.toBeNull();
+    expect(targetIds(h.browser.targets({includeDiscarded: true}))).toEqual([
+      'tab-update-between',
+    ]);
+  });
+
+  it('should not mark a detached page target as discarded after a new page target attached', async () => {
+    const h = createHarness();
+    await h.attach();
+
+    const tab = h.attachTab('replaced');
+    await h.flush();
+    const firstPageTarget = h.browser.targets()[0]!;
+
+    // The page target detaches for a reason other than a discard, and a new
+    // page target replaces it.
+    tab.detachPage();
+    await h.flush();
+    h.attachChild(tab.tabSessionId, 'page-replaced-2', 'page');
+    await h.flush();
+    const secondPageTarget = h.browser.targets()[0]!;
+    expect(secondPageTarget._targetId).toBe('page-replaced-2');
+
+    tab.updateTab({subtype: 'discarded'});
+    await h.flush();
+
+    expect(firstPageTarget.isDiscarded()).toBe(false);
+    expect(secondPageTarget.isDiscarded()).toBe(true);
+  });
+
   it('should finish initialization if an active tab becomes discarded before attaching a page', async () => {
     const h = createHarness();
     await h.attach(() => {
@@ -464,53 +778,68 @@ describe('Discarded tabs', function () {
     ]);
   });
 
-  it('should not mark previously swapped-out page targets as discarded', async () => {
-    const h = createHarness();
-    await h.attach();
+  for (const {chromeActivationOrder, discardDetachFirst} of [
+    {chromeActivationOrder: true, discardDetachFirst: false},
+    {chromeActivationOrder: true, discardDetachFirst: true},
+    {chromeActivationOrder: false, discardDetachFirst: false},
+  ]) {
+    it(`should not mark previously swapped-out page targets as discarded (${chromeActivationOrder ? 'detach before activation' : 'activation before detach'}, ${discardDetachFirst ? 'discard detach first' : 'discard subtype first'})`, async () => {
+      const h = createHarness();
+      await h.attach();
 
-    const destroyedFlags: Array<{id: string; discarded: boolean}> = [];
-    h.browser.on('targetdestroyed', target => {
-      destroyedFlags.push({
-        id: (target as CdpTarget)._targetId,
-        discarded: target.isDiscarded(),
+      const destroyedTargets: CdpTarget[] = [];
+      h.browser.on('targetdestroyed', target => {
+        destroyedTargets.push(target as CdpTarget);
       });
+
+      const tab = h.attachTab('swap');
+      await h.flush();
+
+      const firstPageTarget = h.browser.targets()[0]!;
+      const page = (await firstPageTarget.page())!;
+
+      const prerender = h.attachChild(tab.tabSessionId, 'page-swap-2', 'page', {
+        subtype: 'prerender',
+        url: 'https://example.com/2',
+      });
+      await h.flush();
+
+      const activate = () => {
+        h.transport.emitEvent('Target.targetInfoChanged', {
+          targetInfo: {...prerender.info, subtype: undefined},
+        });
+      };
+      // Chrome 157 detaches the old primary page target before it clears the
+      // subtype of the prerendered target.
+      if (chromeActivationOrder) {
+        tab.detachPage();
+        activate();
+      } else {
+        activate();
+        tab.detachPage();
+      }
+      await h.flush();
+
+      const secondPageTarget = h.browser.targets()[0]!;
+      expect(secondPageTarget._targetId).toBe('page-swap-2');
+      expect(firstPageTarget.isDiscarded()).toBe(false);
+      await expect(h.browser.pages()).resolves.toEqual([page]);
+
+      if (discardDetachFirst) {
+        tab.detachPage(prerender.sessionId);
+        tab.updateTab({subtype: 'discarded'});
+      } else {
+        tab.discard(false);
+        tab.detachPage(prerender.sessionId);
+      }
+      await h.flush();
+
+      expect(page.isClosed()).toBe(true);
+      expect(firstPageTarget.isDiscarded()).toBe(false);
+      expect(secondPageTarget.isDiscarded()).toBe(true);
+      expect(destroyedTargets).toEqual([firstPageTarget, secondPageTarget]);
     });
-
-    const tab = h.attachTab('swap');
-    await h.flush();
-
-    const firstPageTarget = h.browser.targets()[0]!;
-    const page = (await firstPageTarget.page())!;
-
-    const prerender = h.attachChild(tab.tabSessionId, 'page-swap-2', 'page', {
-      subtype: 'prerender',
-      url: 'https://example.com/2',
-    });
-    await h.flush();
-
-    h.transport.emitEvent('Target.targetInfoChanged', {
-      targetInfo: {...prerender.info, subtype: undefined},
-    });
-    tab.detachPage();
-    await h.flush();
-
-    const secondPageTarget = h.browser.targets()[0]!;
-    expect(secondPageTarget._targetId).toBe('page-swap-2');
-    expect(firstPageTarget.isDiscarded()).toBe(false);
-    await expect(h.browser.pages()).resolves.toEqual([page]);
-
-    tab.discard(false);
-    tab.detachPage(prerender.sessionId);
-    await h.flush();
-
-    expect(page.isClosed()).toBe(true);
-    expect(firstPageTarget.isDiscarded()).toBe(false);
-    expect(secondPageTarget.isDiscarded()).toBe(true);
-    expect(destroyedFlags).toEqual([
-      {id: 'page-swap', discarded: false},
-      {id: 'page-swap-2', discarded: true},
-    ]);
-  });
+  }
 
   it('should emit WorkerDestroyed and clear page.workers() when a tab is discarded', async () => {
     const h = createHarness();
@@ -558,6 +887,83 @@ describe('Discarded tabs', function () {
     expect(events).toEqual(['workercreated', 'workerdestroyed', 'close']);
     expect(page.isClosed()).toBe(true);
   });
+
+  for (const detachFirst of [false, true]) {
+    it(`should fail pending worker requests when a tab is discarded (${detachFirst ? 'detach first' : 'subtype first'})`, async () => {
+      const h = createHarness();
+      await h.attach();
+
+      const tab = h.attachTab(
+        `worker-req-${detachFirst ? 'detach' : 'subtype'}`,
+      );
+      await h.flush();
+      const page = (await h.browser.targets()[0]!.page())!;
+      const requests: HTTPRequest[] = [];
+      const failedRequests: HTTPRequest[] = [];
+      page.on(PageEvent.Request, request => {
+        requests.push(request);
+      });
+      page.on(PageEvent.RequestFailed, request => {
+        failedRequests.push(request);
+      });
+
+      const worker = h.attachChild(
+        tab.pageSessionId,
+        'dedicated-worker-req',
+        'worker',
+        {url: 'https://example.com/worker.js'},
+      );
+      await h.flush();
+      expect(page.workers()).toHaveLength(1);
+
+      h.transport.emitEvent(
+        'Network.requestWillBeSent',
+        {
+          requestId: 'worker-request-1',
+          loaderId: '',
+          documentURL: 'https://example.com/worker.js',
+          request: {
+            url: 'https://example.com/hang',
+            method: 'GET',
+            headers: {},
+            initialPriority: 'High',
+            referrerPolicy: 'strict-origin-when-cross-origin',
+          },
+          timestamp: 1,
+          wallTime: 1,
+          initiator: {type: 'script'},
+          redirectHasExtraInfo: false,
+          type: 'Fetch',
+        } satisfies Protocol.Network.RequestWillBeSentEvent,
+        worker.sessionId,
+      );
+      await h.flush();
+      expect(requests).toHaveLength(1);
+      expect(requests[0]!.failure()).toBeNull();
+
+      const detachWorker = () => {
+        h.transport.emitEvent(
+          'Target.detachedFromTarget',
+          {sessionId: worker.sessionId},
+          tab.pageSessionId,
+        );
+      };
+      if (detachFirst) {
+        detachWorker();
+        tab.detachPage();
+        tab.updateTab({subtype: 'discarded'});
+      } else {
+        tab.discard(false);
+        detachWorker();
+        tab.detachPage();
+      }
+      await h.flush();
+
+      expect(page.isClosed()).toBe(true);
+      expect(requests[0]!.failure()).toEqual({errorText: 'net::ERR_ABORTED'});
+      expect(failedRequests).toEqual([requests[0]]);
+    });
+  }
 
   it('should handle tab discard racing with in-flight page(), asPage(), and browser.pages() calls', async () => {
     const h = createHarness();
@@ -700,7 +1106,8 @@ describe('Discarded tabs', function () {
     await h.flush();
 
     const [devtoolsTabTarget] = h.browser.targets({includeDiscarded: true});
-    expect(devtoolsTabTarget).toBeInstanceOf(DevToolsTarget);
+    expect(devtoolsTabTarget).toBeInstanceOf(OtherTarget);
+    expect(devtoolsTabTarget).not.toBeInstanceOf(DevToolsTarget);
     expect(devtoolsTabTarget!.type()).toBe('tab');
     expect(devtoolsTabTarget!.isDiscarded()).toBe(true);
 

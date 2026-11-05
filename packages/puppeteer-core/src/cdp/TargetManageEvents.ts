@@ -18,7 +18,6 @@ export const enum TargetManagerEvent {
   TargetAvailable = 'targetAvailable',
   TargetGone = 'targetGone',
   TargetDiscarded = 'targetDiscarded',
-  TargetUndiscarded = 'targetUndiscarded',
   /**
    * Emitted after a target has been initialized and whenever its URL changes.
    */
@@ -33,7 +32,6 @@ export interface TargetManagerEvents extends Record<EventType, unknown> {
   [TargetManagerEvent.TargetDiscovered]: Protocol.Target.TargetInfo;
   [TargetManagerEvent.TargetGone]: CdpTarget;
   [TargetManagerEvent.TargetDiscarded]: CdpTarget;
-  [TargetManagerEvent.TargetUndiscarded]: CdpTarget;
   [TargetManagerEvent.TargetChanged]: {
     target: CdpTarget;
     wasInitialized: true;

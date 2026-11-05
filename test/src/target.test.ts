@@ -464,8 +464,10 @@ describe('Target', function () {
       });
       const worker = (await serviceWorkerTarget.worker())!;
 
-      const discardUrl = `${server.EMPTY_PAGE}#discard`;
-      const activeUrl = `${server.EMPTY_PAGE}#active`;
+      // `chrome.tabs.query({url})` matches URL patterns against the URL
+      // without its fragment, so the two pages need distinct paths.
+      const discardUrl = server.EMPTY_PAGE;
+      const activeUrl = `${server.PREFIX}/title.html`;
 
       const pageToDiscard = await browser.newPage();
       await pageToDiscard.goto(discardUrl);
