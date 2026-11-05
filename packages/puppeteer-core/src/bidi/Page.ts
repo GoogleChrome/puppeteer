@@ -9,7 +9,8 @@ import * as Bidi from 'webdriver-bidi-protocol';
 
 import {firstValueFrom, from, raceWith} from '../../third_party/rxjs/rxjs.js';
 import type {BluetoothEmulation} from '../api/BluetoothEmulation.js';
-import type {WindowId} from '../api/Browser.js';
+import {BrowserEvent, type WindowId} from '../api/Browser.js';
+import {BrowserContextEvent} from '../api/BrowserContext.js';
 import type {CDPSession} from '../api/CDPSession.js';
 import type {DeviceRequestPrompt} from '../api/DeviceRequestPrompt.js';
 import type {BoundingBox} from '../api/ElementHandle.js';
@@ -43,6 +44,7 @@ import type {
 } from '../cdp/NetworkManager.js';
 import {Tracing} from '../cdp/Tracing.js';
 import type {WebMCP} from '../cdp/WebMCP.js';
+import type {ConsoleMessage} from '../common/ConsoleMessage.js';
 import type {
   CookiePartitionKey,
   Cookie,
@@ -228,6 +230,21 @@ export class BidiPage extends Page {
 
   override browserContext(): BidiBrowserContext {
     return this.#browserContext;
+  }
+
+  /**
+   * Emits the message on the page, then on the browser context and the
+   * browser, matching the CDP order.
+   *
+   * @internal
+   */
+  emitConsoleMessage(message: ConsoleMessage): void {
+    this.trustedEmitter.emit(PageEvent.Console, message);
+    this.#browserContext.trustedEmitter.emit(
+      BrowserContextEvent.Console,
+      message,
+    );
+    this.browser().trustedEmitter.emit(BrowserEvent.Console, message);
   }
 
   override mainFrame(): BidiFrame {

@@ -188,10 +188,7 @@ export class BidiFrame extends Frame {
           return this.mainRealm().createHandle(arg);
         });
 
-        this.page().trustedEmitter.emit(
-          PageEvent.Console,
-          getConsoleMessage(entry, args, this),
-        );
+        page.emitConsoleMessage(getConsoleMessage(entry, args, this));
       } else if (isJavaScriptLogEntry(entry)) {
         const error = new Error(entry.text ?? '');
 
