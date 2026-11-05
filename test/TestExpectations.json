@@ -1161,7 +1161,7 @@
     "platforms": ["darwin", "linux", "win32"],
     "parameters": ["firefox", "webDriverBiDi"],
     "expectations": ["SKIP"],
-    "comment": "Firefox dedicated worker console messages are attributed to the owner frame, so ConsoleMessage.worker() is null"
+    "comment": "Firefox does not support web worker targets in Puppeteer, see [worker.test] *"
   },
   {
     "testIdPattern": "[browser.test] Browser specs Browser.process should not return child_process for remote browser",
@@ -1182,7 +1182,7 @@
     "platforms": ["darwin", "linux", "win32"],
     "parameters": ["firefox", "webDriverBiDi"],
     "expectations": ["SKIP"],
-    "comment": "Firefox dedicated worker console messages are attributed to the owner frame, so ConsoleMessage.worker() is null"
+    "comment": "Firefox does not support web worker targets in Puppeteer, see [worker.test] *"
   },
   {
     "testIdPattern": "[browsercontext.test] BrowserContext should work across sessions",
