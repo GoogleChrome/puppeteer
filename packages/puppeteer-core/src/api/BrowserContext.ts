@@ -29,6 +29,7 @@ import type {
   Permission,
   PermissionDescriptor,
   PermissionState,
+  TargetOptions,
   WaitForTargetOptions,
 } from './Browser.js';
 import type {HTTPRequest} from './HTTPRequest.js';
@@ -190,9 +191,12 @@ export abstract class BrowserContext extends EventEmitter<BrowserContextEvents> 
 
   /**
    * Gets all active {@link Target | targets} inside this
-   * {@link BrowserContext | browser context}.
+   * {@link BrowserContext | browser context}, plus targets for discarded tabs
+   * when {@link TargetOptions.includeDiscarded} is `true`.
+   *
+   * @param options - Options to filter the returned targets.
    */
-  abstract targets(): Target[];
+  abstract targets(options?: TargetOptions): Target[];
 
   /**
    * If defined, indicates an ongoing screenshot operation.

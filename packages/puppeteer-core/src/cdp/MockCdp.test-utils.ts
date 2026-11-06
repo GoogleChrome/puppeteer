@@ -11,6 +11,7 @@
 
 import type {Protocol} from 'devtools-protocol';
 
+import type {TargetFilterCallback} from '../api/Browser.js';
 import type {Target} from '../api/Target.js';
 import type {ConnectionTransport} from '../common/ConnectionTransport.js';
 
@@ -46,6 +47,21 @@ export class MockTransport implements ConnectionTransport {
    * Returns an error message to make the browser fail a command.
    */
   errorFor?: (msg: SentMessage) => string | undefined;
+  /**
+   * Called for each command after the response is queued.
+   */
+  onSend?: (msg: SentMessage) => void;
+  /**
+   * Custom responses by method name. `afterResponse` runs after the browser
+   * gets the response.
+   */
+  rpcHandlers = new Map<
+    string,
+    (msg: SentMessage) => {
+      result?: Record<string, unknown>;
+      afterResponse?: () => void;
+    }
+  >();
 
   send(message: string): void {
     const msg = JSON.parse(message) as SentMessage;
@@ -62,6 +78,15 @@ export class MockTransport implements ConnectionTransport {
         );
         return;
       }
+      const custom = this.rpcHandlers.get(msg.method);
+      if (custom) {
+        const {result = {}, afterResponse} = custom(msg);
+        this.onmessage?.(
+          JSON.stringify({id: msg.id, sessionId: msg.sessionId, result}),
+        );
+        afterResponse?.();
+        return;
+      }
       if (msg.method === 'Target.setAutoAttach' && !msg.sessionId) {
         this.onBrowserAutoAttach?.();
       }
@@ -75,6 +100,7 @@ export class MockTransport implements ConnectionTransport {
         JSON.stringify({id: msg.id, sessionId: msg.sessionId, result}),
       );
     });
+    this.onSend?.(msg);
   }
 
   emitEvent(method: string, params: unknown, sessionId?: string): void {
@@ -119,13 +145,38 @@ export interface MockTab {
    * The page target that the tab attached at creation, if any.
    */
   page: MockChildTarget | undefined;
+  /**
+   * The session of the current page target. `reload()` changes it.
+   */
+  readonly pageSessionId: string;
   updateTab(overrides: Partial<Protocol.Target.TargetInfo>): void;
   detachChild(sessionId: string): void;
+  /**
+   * Detaches the current page target, or the target of `sessionId`.
+   */
+  detachPage(sessionId?: string): void;
+  /**
+   * Sets the `discarded` subtype on the tab, and then detaches the current
+   * page target if `detach` is `true`.
+   */
+  discard(detach?: boolean): void;
+  /**
+   * Clears the subtype of the tab and attaches a new page target.
+   */
+  reload(newPageId: string): string;
   close(): void;
+}
+
+export interface MockTabOptions {
+  url?: string;
+  attachPage?: boolean;
+  discarded?: boolean;
+  browserContextId?: string;
 }
 
 export interface MockCdpHarness {
   browser: CdpBrowser;
+  connection: Connection;
   transport: MockTransport;
   /**
    * Waits until all pending CDP messages and events are handled.
@@ -137,18 +188,22 @@ export interface MockCdpHarness {
     type: string,
     overrides?: Partial<Protocol.Target.TargetInfo>,
   ): MockChildTarget;
-  attachTab(
-    id: string,
-    tabOpts?: {url?: string; attachPage?: boolean},
-  ): MockTab;
+  attachTab(id: string, tabOpts?: MockTabOptions): MockTab;
   /**
    * Attaches the browser. `onAutoAttach` runs when the browser enables
    * auto-attach, so it can report the targets that exist at start.
    */
   attach(onAutoAttach?: () => void): Promise<void>;
+  /**
+   * Returns the commands sent to `sessionId`, starting at index `since` of
+   * all sent commands.
+   */
+  sentTo(sessionId: string, since?: number): SentMessage[];
 }
 
-export function createHarness(): MockCdpHarness {
+export function createHarness(options?: {
+  targetFilter?: TargetFilterCallback;
+}): MockCdpHarness {
   const transport = new MockTransport();
   const noopLogger = () => {
     return undefined;
@@ -168,7 +223,7 @@ export function createHarness(): MockCdpHarness {
     undefined,
     undefined,
     undefined,
-    undefined,
+    options?.targetFilter,
     undefined,
     undefined,
     undefined,
@@ -204,14 +259,15 @@ export function createHarness(): MockCdpHarness {
     return {info, sessionId};
   };
 
-  const attachTab = (
-    id: string,
-    tabOpts: {url?: string; attachPage?: boolean} = {},
-  ): MockTab => {
+  const attachTab = (id: string, tabOpts: MockTabOptions = {}): MockTab => {
     const url = tabOpts.url ?? 'https://example.com/';
     const tabId = `tab-${id}`;
     const tabSessionId = `session-${tabId}`;
-    let tabInfo = makeTargetInfo(tabId, 'tab', {url});
+    let tabInfo = makeTargetInfo(tabId, 'tab', {
+      url,
+      subtype: tabOpts.discarded ? 'discarded' : undefined,
+      browserContextId: tabOpts.browserContextId,
+    });
     transport.emitEvent('Target.targetCreated', {targetInfo: tabInfo});
     transport.emitEvent('Target.attachedToTarget', {
       sessionId: tabSessionId,
@@ -220,23 +276,51 @@ export function createHarness(): MockCdpHarness {
     });
 
     let page: MockChildTarget | undefined;
-    if (tabOpts.attachPage !== false) {
-      page = attachChild(tabSessionId, `page-${id}`, 'page', {url});
+    let pageSessionId = `session-page-${id}`;
+    if (!tabOpts.discarded && tabOpts.attachPage !== false) {
+      page = attachChild(tabSessionId, `page-${id}`, 'page', {
+        url,
+        browserContextId: tabOpts.browserContextId,
+      });
+      pageSessionId = page.sessionId;
     }
+
+    const updateTab = (overrides: Partial<Protocol.Target.TargetInfo>) => {
+      tabInfo = {...tabInfo, ...overrides};
+      transport.emitEvent('Target.targetInfoChanged', {targetInfo: tabInfo});
+    };
+    const detachChild = (sessionId: string) => {
+      transport.emitEvent(
+        'Target.detachedFromTarget',
+        {sessionId},
+        tabSessionId,
+      );
+    };
 
     return {
       tabSessionId,
       page,
-      updateTab(overrides: Partial<Protocol.Target.TargetInfo>) {
-        tabInfo = {...tabInfo, ...overrides};
-        transport.emitEvent('Target.targetInfoChanged', {targetInfo: tabInfo});
+      get pageSessionId() {
+        return pageSessionId;
       },
-      detachChild(sessionId: string) {
-        transport.emitEvent(
-          'Target.detachedFromTarget',
-          {sessionId},
-          tabSessionId,
-        );
+      updateTab,
+      detachChild,
+      detachPage(sessionId = pageSessionId) {
+        detachChild(sessionId);
+      },
+      discard(detach = true) {
+        updateTab({subtype: 'discarded'});
+        if (detach) {
+          detachChild(pageSessionId);
+        }
+      },
+      reload(newPageId: string) {
+        updateTab({subtype: undefined});
+        pageSessionId = attachChild(tabSessionId, newPageId, 'page', {
+          url: tabInfo.url,
+          browserContextId: tabInfo.browserContextId,
+        }).sessionId;
+        return pageSessionId;
       },
       close() {
         transport.emitEvent('Target.detachedFromTarget', {
@@ -248,6 +332,7 @@ export function createHarness(): MockCdpHarness {
 
   return {
     browser,
+    connection,
     transport,
     flush,
     attachChild,
@@ -256,6 +341,11 @@ export function createHarness(): MockCdpHarness {
       transport.onBrowserAutoAttach = onAutoAttach;
       await browser._attach(undefined);
       await flush();
+    },
+    sentTo(sessionId: string, since = 0) {
+      return transport.sentMessages.slice(since).filter(msg => {
+        return msg.sessionId === sessionId;
+      });
     },
   };
 }

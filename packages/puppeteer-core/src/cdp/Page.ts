@@ -280,6 +280,15 @@ export class CdpPage extends Page {
       TargetManagerEvent.TargetGone,
       this.#onDetachedFromTarget,
     );
+    // Watch the primary page target instead of the tab target: a reloaded page
+    // target can attach before its tab clears the `discarded` subtype.
+    targetManagerEmitter.on(
+      TargetManagerEvent.TargetDiscarded,
+      this.#onTargetDiscarded,
+    );
+    if (this.#primaryTarget.isDiscarded()) {
+      queueMicrotask(this.#handleClose);
+    }
 
     void this.#tabTarget._isClosedDeferred
       .valueOrThrow()
@@ -296,9 +305,9 @@ export class CdpPage extends Page {
     if (this.#closed) {
       return;
     }
-    // The page can close before the worker sessions disconnect. Fail the
-    // pending worker requests while the page still knows its workers and
-    // still forwards `requestfailed`.
+    // The page can close before the worker sessions disconnect, for example
+    // when Chrome discards the tab. Fail the pending worker requests while the
+    // page still knows its workers and still forwards `requestfailed`.
     for (const worker of this.#workers.values()) {
       this.#frameManager.networkManager.releaseClient(worker.client);
     }
@@ -312,6 +321,12 @@ export class CdpPage extends Page {
 
     this.#closed = true;
     this.emit(PageEvent.Close, undefined);
+  };
+
+  #onTargetDiscarded = (target: CdpTarget): void => {
+    if (target === this.#primaryTarget) {
+      this.#handleClose();
+    }
   };
 
   #attachExistingTargets(): void {
@@ -346,6 +361,9 @@ export class CdpPage extends Page {
     assert(this.#primaryTarget, 'Missing target on swap');
     // The activated target belongs to this page.
     this.#primaryTarget.pagePromise = Promise.resolve(this);
+    if (this.#primaryTarget.isDiscarded()) {
+      this.#handleClose();
+    }
     this.#keyboard.updateClient(newSession);
     this.#mouse.updateClient(newSession);
     this.#touchscreen.updateClient(newSession);
@@ -1401,6 +1419,11 @@ export class CdpPage extends Page {
   override async close(
     options: {runBeforeUnload?: boolean} = {runBeforeUnload: undefined},
   ): Promise<void> {
+    // The page target of a discarded tab no longer exists in the browser, and
+    // the page already emitted `close`.
+    if (this.#closed && this.#primaryTarget.isDiscarded()) {
+      return;
+    }
     using _guard = await this.browserContext().waitForScreenshotOperations();
     const connection = this.#primaryTargetClient.connection();
     assert(

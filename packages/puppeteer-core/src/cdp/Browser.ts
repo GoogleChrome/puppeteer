@@ -12,6 +12,7 @@ import type {
   CreatePageOptions,
   DebugInfo,
   ExtensionInstallOptions,
+  TargetOptions,
 } from '../api/Browser.js';
 import {
   Browser as BrowserBase,
@@ -222,6 +223,10 @@ export class CdpBrowser extends BrowserBase {
       this.#onDetachedFromTarget,
     );
     targetManagerEmitter.on(
+      TargetManagerEvent.TargetDiscarded,
+      this.#onTargetDiscarded,
+    );
+    targetManagerEmitter.on(
       TargetManagerEvent.TargetChanged,
       this.#onTargetChanged,
     );
@@ -346,7 +351,13 @@ export class CdpBrowser extends BrowserBase {
       createSession,
       this.logger,
     );
-    if (targetInfo.url && isDevToolsPageTarget(targetInfo.url)) {
+    // A DevTools window has a `"tab"` target and a child `"page"` target with
+    // the same URL. Only the `"page"` target can be used as a page.
+    if (
+      targetInfo.type !== 'tab' &&
+      targetInfo.url &&
+      isDevToolsPageTarget(targetInfo.url)
+    ) {
       return new DevToolsTarget(
         targetInfo,
         session,
@@ -391,8 +402,9 @@ export class CdpBrowser extends BrowserBase {
     if (
       (await target._initializedDeferred.valueOrThrow()) ===
         InitializationStatus.SUCCESS &&
-      // The target can change while it initializes, and the target manager
-      // can report a target again when a prerendered target becomes primary.
+      // The target can change while it initializes (for example, it becomes
+      // discarded), and the target manager can report a target again when a
+      // prerendered target becomes primary.
       target._isTargetExposed() &&
       !target._isClosedDeferred.resolved() &&
       !this.#announcedTargets.has(target)
@@ -406,6 +418,20 @@ export class CdpBrowser extends BrowserBase {
   #onDetachedFromTarget = async (target: CdpTarget): Promise<void> => {
     target._initializedDeferred.resolve(InitializationStatus.ABORTED);
     target._isClosedDeferred.resolve();
+    if (
+      (await target._initializedDeferred.valueOrThrow()) ===
+        InitializationStatus.SUCCESS &&
+      this.#announcedTargets.delete(target)
+    ) {
+      this.emit(BrowserEvent.TargetDestroyed, target);
+      target.browserContext().emit(BrowserContextEvent.TargetDestroyed, target);
+    }
+  };
+
+  #onTargetDiscarded = async (target: CdpTarget): Promise<void> => {
+    if (!target._initializedDeferred.resolved()) {
+      return;
+    }
     if (
       (await target._initializedDeferred.valueOrThrow()) ===
         InitializationStatus.SUCCESS &&
@@ -440,10 +466,9 @@ export class CdpBrowser extends BrowserBase {
     contextId?: string,
     options?: CreatePageOptions,
   ): Promise<Page> {
-    const hasTargets =
-      this.targets().filter(t => {
-        return t.browserContext().id === contextId;
-      }).length > 0;
+    const hasTargets = this.targets({includeDiscarded: true}).some(t => {
+      return t.browserContext().id === contextId;
+    });
     const windowBounds =
       options?.type === 'window' ? options.windowBounds : undefined;
     const {targetId} = await this.#connection.send('Target.createTarget', {
@@ -696,12 +721,12 @@ export class CdpBrowser extends BrowserBase {
     });
   }
 
-  override targets(): CdpTarget[] {
+  override targets(options?: TargetOptions): CdpTarget[] {
     return Array.from(
       this.#targetManager.getAvailableTargets().values(),
     ).filter(target => {
       return (
-        target._isTargetExposed() &&
+        target._isTargetExposed(options) &&
         target._initializedDeferred.value() === InitializationStatus.SUCCESS
       );
     });
