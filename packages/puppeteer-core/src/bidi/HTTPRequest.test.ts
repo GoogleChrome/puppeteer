@@ -8,6 +8,7 @@ import {describe, it} from 'node:test';
 import expect from 'expect';
 import type * as Bidi from 'webdriver-bidi-protocol';
 
+import {InterceptResolutionAction} from '../api/HTTPRequest.js';
 import {ProtocolError} from '../common/Errors.js';
 import {EventEmitter} from '../common/EventEmitter.js';
 
@@ -17,14 +18,13 @@ import {BidiHTTPRequest} from './HTTPRequest.js';
 
 class FakeRequest extends EventEmitter<{authenticate: void}> {
   readonly id = 'requestId';
-  readonly isBlocked = true;
+  isBlocked = true;
   calls: Array<Record<string, unknown>> = [];
   responses: Array<Omit<Bidi.Network.ProvideResponseParameters, 'request'>> =
     [];
 
-  async continueWithAuth(parameters: Record<string, unknown>): Promise<void> {
+  async continueRequest(parameters: Record<string, unknown>): Promise<void> {
     this.calls.push(parameters);
-    throw new ProtocolError('No such request with the given id');
   }
 
   async provideResponse(
@@ -32,17 +32,17 @@ class FakeRequest extends EventEmitter<{authenticate: void}> {
   ): Promise<void> {
     this.responses.push(parameters);
   }
+
+  async continueWithAuth(parameters: Record<string, unknown>): Promise<void> {
+    this.calls.push(parameters);
+    throw new ProtocolError('No such request with the given id');
+  }
 }
 
 function createRequest(
   credentials: {username: string; password: string} | null,
-): FakeRequest {
-  return createBidiRequest(credentials).fakeRequest;
-}
-
-function createBidiRequest(
-  credentials: {username: string; password: string} | null,
-): {fakeRequest: FakeRequest; request: BidiHTTPRequest} {
+  interceptionEnabled = false,
+): {fakeRequest: FakeRequest; httpRequest: BidiHTTPRequest} {
   const fakeRequest = new FakeRequest();
   const frame = {
     page() {
@@ -51,21 +51,27 @@ function createBidiRequest(
         trustedEmitter: {
           emit() {},
         },
+        browserContext() {
+          return {trustedEmitter: {emit() {}}};
+        },
+        browser() {
+          return {trustedEmitter: {emit() {}}};
+        },
       };
     },
   } as unknown as BidiFrame;
 
-  const request = BidiHTTPRequest.from(
+  const httpRequest = BidiHTTPRequest.from(
     fakeRequest as unknown as Request,
     frame,
-    false,
+    interceptionEnabled,
     undefined,
     () => {
       return undefined;
     },
   );
 
-  return {fakeRequest, request};
+  return {fakeRequest, httpRequest};
 }
 
 async function unhandledRejectionsOnAuthenticate(
@@ -93,7 +99,7 @@ async function unhandledRejectionsOnAuthenticate(
 
 describe('BidiHTTPRequest', () => {
   it('should not reject when continueWithAuth fails while providing credentials', async () => {
-    const fakeRequest = createRequest({username: 'user', password: 'pass'});
+    const {fakeRequest} = createRequest({username: 'user', password: 'pass'});
 
     const rejections = await unhandledRejectionsOnAuthenticate(fakeRequest);
 
@@ -102,7 +108,7 @@ describe('BidiHTTPRequest', () => {
   });
 
   it('should not reject when continueWithAuth fails while canceling', async () => {
-    const fakeRequest = createRequest(null);
+    const {fakeRequest} = createRequest(null);
 
     const rejections = await unhandledRejectionsOnAuthenticate(fakeRequest);
 
@@ -110,10 +116,21 @@ describe('BidiHTTPRequest', () => {
     expect(rejections).toHaveLength(0);
   });
 
-  it('should let contentType replace a content-type header in respond()', async () => {
-    const {fakeRequest, request} = createBidiRequest(null);
+  it('should keep interceptResolutionState as already-handled after request unblocks', async () => {
+    const {fakeRequest, httpRequest} = createRequest(null, true);
 
-    await request._respond({
+    await httpRequest.continue();
+    fakeRequest.isBlocked = false;
+
+    expect(httpRequest.interceptResolutionState()).toEqual({
+      action: InterceptResolutionAction.AlreadyHandled,
+    });
+  });
+
+  it('should let contentType replace a content-type header in respond()', async () => {
+    const {fakeRequest, httpRequest} = createRequest(null);
+
+    await httpRequest._respond({
       status: 200,
       headers: {'Content-Type': 'text/html'},
       contentType: 'text/plain',
@@ -125,5 +142,63 @@ describe('BidiHTTPRequest', () => {
       {name: 'content-type', value: {type: 'string', value: 'text/plain'}},
       {name: 'content-length', value: {type: 'string', value: '2'}},
     ]);
+  });
+});
+
+class CanceledRequest extends EventEmitter<{authenticate: void}> {
+  readonly id = 'requestId';
+  readonly isBlocked = true;
+
+  async provideResponse(): Promise<void> {
+    throw new ProtocolError('no such request');
+  }
+
+  async failRequest(): Promise<void> {
+    throw new ProtocolError('no such request');
+  }
+}
+
+function createCanceledRequest(): BidiHTTPRequest {
+  const frame = {
+    page() {
+      return {
+        _credentials: null,
+        trustedEmitter: {
+          emit() {},
+        },
+        browserContext() {
+          return {trustedEmitter: {emit() {}}};
+        },
+        browser() {
+          return {trustedEmitter: {emit() {}}};
+        },
+      };
+    },
+  } as unknown as BidiFrame;
+
+  return BidiHTTPRequest.from(
+    new CanceledRequest() as unknown as Request,
+    frame,
+    false,
+    undefined,
+    () => {
+      return undefined;
+    },
+  );
+}
+
+describe('BidiHTTPRequest after the request is gone', () => {
+  it('should not reject when respond() fails', async () => {
+    const request = createCanceledRequest();
+
+    await expect(request._respond({status: 200, body: 'ok'})).resolves.toBe(
+      undefined,
+    );
+  });
+
+  it('should not reject when abort() fails', async () => {
+    const request = createCanceledRequest();
+
+    await expect(request._abort()).resolves.toBe(undefined);
   });
 });

@@ -8,13 +8,13 @@ import type * as Bidi from 'webdriver-bidi-protocol';
 
 import type {Frame} from '../api/Frame.js';
 import {HTTPResponse, type RemoteAddress} from '../api/HTTPResponse.js';
-import {PageEvent} from '../api/Page.js';
 import {UnsupportedOperation} from '../common/Errors.js';
 import {SecurityDetails} from '../common/SecurityDetails.js';
 import {invokeAtMostOnceForArguments} from '../util/decorators.js';
 import {normalizeHeaderValue} from '../util/httpUtils.js';
 
 import type {BidiHTTPRequest} from './HTTPRequest.js';
+import {emitRequestServedFromCache, emitResponse} from './NetworkEvents.js';
 
 /**
  * @internal
@@ -67,12 +67,16 @@ export class BidiHTTPResponse extends HTTPResponse {
   #initialize() {
     if (this.#data.fromCache) {
       this.#request._fromMemoryCache = true;
-      this.#request
-        .frame()
-        ?.page()
-        .trustedEmitter.emit(PageEvent.RequestServedFromCache, this.#request);
     }
-    this.#request.frame()?.page().trustedEmitter.emit(PageEvent.Response, this);
+    // Requests from dedicated workers have no frame and are not reported.
+    const page = this.#request.frame()?.page();
+    if (!page) {
+      return;
+    }
+    if (this.#data.fromCache) {
+      emitRequestServedFromCache(page, this.#request);
+    }
+    emitResponse(page, this);
   }
 
   @invokeAtMostOnceForArguments

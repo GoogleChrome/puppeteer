@@ -9,7 +9,7 @@ import type {ServerResponse} from 'node:http';
 import path from 'node:path';
 
 import expect from 'expect';
-import type {Issue} from 'puppeteer';
+import type {ElementHandle, Issue} from 'puppeteer';
 import {KnownDevices, TimeoutError} from 'puppeteer';
 import {CDPSession} from 'puppeteer-core/internal/api/CDPSession.js';
 import type {HTTPRequest} from 'puppeteer-core/internal/api/HTTPRequest.js';
@@ -441,6 +441,7 @@ describe('Page', function () {
             resolve({
               latitude: position.coords.latitude,
               longitude: position.coords.longitude,
+              accuracy: position.coords.accuracy,
             });
           });
         });
@@ -448,6 +449,7 @@ describe('Page', function () {
       expect(geolocation).toEqual({
         latitude: 10,
         longitude: 10,
+        accuracy: 0,
       });
     });
     it('should remove the override when called with null', async () => {
@@ -575,6 +577,8 @@ describe('Page', function () {
         'TaskDuration',
         'JSHeapUsedSize',
         'JSHeapTotalSize',
+        'DomContentLoaded',
+        'NavigationStart',
       ]);
       for (const name in metrics) {
         expect(metricsToCheck.has(name)).toBeTruthy();
@@ -1221,6 +1225,46 @@ describe('Page', function () {
         return (globalThis as any).call();
       });
       expect(calls).toBe(1);
+    });
+
+    it('should work after deleting exposed function from globalThis', async () => {
+      const {page} = await getTestState();
+
+      await page.exposeFunction(
+        'compute',
+        async function (a: number, b: number, element?: ElementHandle) {
+          if (a < 0) {
+            throw new Error('negative input');
+          }
+          const tag = element
+            ? await element.evaluate(el => {
+                return el.nodeName;
+              })
+            : '';
+          return `${a * b}:${tag}`;
+        },
+      );
+      const result = await page.evaluate(async function () {
+        const compute = (globalThis as any).compute;
+        delete (globalThis as any).compute;
+        const value = await compute(9, 4, document.body);
+        let errorMessage = '';
+        try {
+          await compute(-1, 4);
+        } catch (error) {
+          errorMessage = (error as Error).message;
+        }
+        return {
+          existsOnWindow: 'compute' in globalThis,
+          value,
+          errorMessage,
+        };
+      });
+      expect(result).toEqual({
+        existsOnWindow: false,
+        value: '36:BODY',
+        errorMessage: 'negative input',
+      });
     });
   });
 
@@ -2236,6 +2280,19 @@ describe('Page', function () {
       ]);
       expect(nonCachedRequest.headers['if-modified-since']).toBe(undefined);
     });
+    it('should enable the cache when called without arguments', async () => {
+      const {page, server} = await getTestState();
+
+      await page.setCacheEnabled(false);
+      await page.setCacheEnabled();
+
+      await page.goto(server.PREFIX + '/cached/one-style.html');
+      const [cachedRequest] = await Promise.all([
+        server.waitForRequest('/cached/one-style.html'),
+        page.reload(),
+      ]);
+      expect(cachedRequest.headers['if-modified-since']).not.toBe(undefined);
+    });
     it('should stay disabled when toggling request interception on/off', async () => {
       const {page, server} = await getTestState();
 
@@ -2304,6 +2361,26 @@ describe('Page', function () {
         return err;
       });
       expect(error).toBeInstanceOf(TimeoutError);
+    });
+
+    it('should not wait for fonts if waitForFonts is false', async () => {
+      const {page, server} = await getTestState();
+
+      await page.goto(server.EMPTY_PAGE);
+      // The font request never gets a response, so `document.fonts.ready`
+      // does not resolve.
+      server.setRoute('/never-loading-font.woff2', () => {});
+      await Promise.all([
+        server.waitForRequest('/never-loading-font.woff2'),
+        page.evaluate(url => {
+          const font = new FontFace('never-loading', `url(${url})`);
+          document.fonts.add(font);
+          void font.load();
+        }, server.PREFIX + '/never-loading-font.woff2'),
+      ]);
+
+      const pdf = await page.pdf({waitForFonts: false, timeout: 5_000});
+      expect(pdf.byteLength).toBeGreaterThan(0);
     });
   });
 

@@ -5,6 +5,7 @@
  */
 
 import expect from 'expect';
+import type {HTTPRequest} from 'puppeteer-core/internal/api/HTTPRequest.js';
 import type {WebWorker} from 'puppeteer-core/internal/api/WebWorker.js';
 import {WebWorkerEvent} from 'puppeteer-core/internal/api/WebWorker.js';
 import type {ConsoleMessage} from 'puppeteer-core/internal/common/ConsoleMessage.js';
@@ -40,6 +41,80 @@ describe('Workers', function () {
     expect(page.workers()).toHaveLength(0);
   });
 
+  it('should report network requests', async () => {
+    const {page, server} = await getTestState();
+
+    const [worker] = await Promise.all([
+      waitEvent<WebWorker>(page, 'workercreated'),
+      page.goto(server.PREFIX + '/worker/worker.html'),
+    ]);
+    const requestPromise = page.waitForRequest(server.EMPTY_PAGE);
+    await worker.evaluate((url: string) => {
+      return fetch(url);
+    }, server.EMPTY_PAGE);
+    const request = await requestPromise;
+
+    expect(request.url()).toBe(server.EMPTY_PAGE);
+    expect(request.worker()).toBe(worker);
+    expect(request.frame()).toBeNull();
+    expect(request.page()).toBeNull();
+  });
+
+  it('should report network requests with request interception', async () => {
+    const {page, server} = await getTestState();
+
+    await page.setRequestInterception(true);
+    page.on('request', request => {
+      void request.continue();
+    });
+
+    const [worker] = await Promise.all([
+      waitEvent<WebWorker>(page, 'workercreated'),
+      page.goto(server.PREFIX + '/worker/worker.html'),
+    ]);
+    const requestPromise = page.waitForRequest(server.EMPTY_PAGE);
+    await worker.evaluate((url: string) => {
+      return fetch(url);
+    }, server.EMPTY_PAGE);
+    const request = await requestPromise;
+
+    expect(request.url()).toBe(server.EMPTY_PAGE);
+    expect(request.worker()).toBe(worker);
+    expect(request.frame()).toBeNull();
+    expect(request.page()).toBeNull();
+  });
+
+  it('should report network requests as failed when the worker is terminated', async () => {
+    const {page, server} = await getTestState();
+
+    // Never responds, so the request stays pending until the worker dies.
+    server.setRoute('/hang', () => {});
+
+    const [worker] = await Promise.all([
+      waitEvent<WebWorker>(page, 'workercreated'),
+      page.goto(server.PREFIX + '/worker/worker.html'),
+    ]);
+    const requestPromise = page.waitForRequest(server.PREFIX + '/hang');
+    await worker.evaluate((url: string) => {
+      void fetch(url);
+    }, server.PREFIX + '/hang');
+    const request = await requestPromise;
+
+    const failedPromise = waitEvent<HTTPRequest>(
+      page,
+      'requestfailed',
+      failed => {
+        return failed === request;
+      },
+    );
+    await page.evaluate(() => {
+      (globalThis as any).worker.terminate();
+    });
+    await failedPromise;
+
+    expect(request.failure()).toEqual({errorText: 'net::ERR_ABORTED'});
+  });
+
   it('should emit created and destroyed events', async () => {
     const {page} = await getTestState();
 
@@ -69,7 +144,8 @@ describe('Workers', function () {
     ]);
   });
   it('should report console logs', async () => {
-    const {page} = await getTestState();
+    const {page, browser} = await getTestState();
+    const isCdp = browser.protocol === 'cdp';
 
     const [message] = await Promise.all([
       waitEvent(page, 'console'),
@@ -82,6 +158,7 @@ describe('Workers', function () {
       url: '',
       lineNumber: 0,
       columnNumber: 8,
+      ...(isCdp ? {scriptId: expect.any(String)} : {}),
     });
   });
   it('should work with console logs', async () => {
