@@ -13,6 +13,7 @@ import {
   ConsoleMessage,
   type ConsoleMessageType,
 } from '../common/ConsoleMessage.js';
+import {type CallFrame, RemoteException} from '../common/RemoteException.js';
 import {PuppeteerURL, evaluationString} from '../common/util.js';
 import {assert} from '../util/assert.js';
 
@@ -136,6 +137,60 @@ const getErrorDetails = (details: Protocol.Runtime.ExceptionDetails) => {
   }
   return {message, name};
 };
+
+/**
+ * @internal
+ */
+export function createRemoteException(
+  details: Protocol.Runtime.ExceptionDetails,
+  handle?: JSHandle,
+): RemoteException {
+  let text: string;
+  let name: string;
+  const exception = details.exception;
+  if (!exception) {
+    // E.g. compilation errors without an exception value.
+    text = details.text;
+    name = '';
+  } else if (
+    (exception.type !== 'object' || exception.subtype !== 'error') &&
+    !exception.objectId
+  ) {
+    // A primitive value was thrown.
+    text =
+      exception.description ??
+      String(valueFromPrimitiveRemoteObject(exception));
+    name = '';
+  } else {
+    const detail = getErrorDetails(details);
+    name = detail.name;
+    text = name ? `${name}: ${detail.message}` : detail.message;
+  }
+
+  const stackTrace: CallFrame[] = (details.stackTrace?.callFrames ?? []).map(
+    frame => {
+      return {
+        url: frame.url,
+        lineNumber: frame.lineNumber,
+        columnNumber: frame.columnNumber,
+        functionName: frame.functionName,
+      };
+    },
+  );
+
+  return new RemoteException({
+    text,
+    name,
+    stackTrace,
+    location: {
+      url: details.url,
+      lineNumber: details.lineNumber,
+      columnNumber: details.columnNumber,
+    },
+    handle,
+    rawExceptionDetails: details,
+  });
+}
 
 /**
  * @internal

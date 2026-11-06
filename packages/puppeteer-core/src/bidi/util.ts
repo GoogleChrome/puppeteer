@@ -14,6 +14,7 @@ import type {
   ConsoleMessageType,
 } from '../common/ConsoleMessage.js';
 import {ProtocolError, TimeoutError} from '../common/Errors.js';
+import {RemoteException} from '../common/RemoteException.js';
 import {PuppeteerURL} from '../common/util.js';
 
 import type {BidiElementHandle} from './bidi.js';
@@ -106,6 +107,32 @@ export function isJavaScriptLogEntry(
   event: Bidi.Log.Entry,
 ): event is Bidi.Log.JavascriptLogEntry {
   return event.type === 'javascript';
+}
+
+/**
+ * Creates a {@link RemoteException} from a WebDriver BiDi JavaScript log entry.
+ *
+ * @remarks
+ * WebDriver BiDi does not expose the exception name nor a remote reference to
+ * the thrown value, so `name()` is `null` and `handle()` is `undefined`.
+ *
+ * @internal
+ */
+export function createRemoteExceptionFromLogEntry(
+  entry: Bidi.Log.JavascriptLogEntry,
+): RemoteException {
+  return new RemoteException({
+    text: entry.text ?? '',
+    name: null,
+    stackTrace: (entry.stackTrace?.callFrames ?? []).map(frame => {
+      return {
+        url: frame.url,
+        lineNumber: frame.lineNumber,
+        columnNumber: frame.columnNumber,
+        functionName: frame.functionName,
+      };
+    }),
+  });
 }
 
 /**

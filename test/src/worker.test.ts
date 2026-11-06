@@ -6,9 +6,11 @@
 
 import expect from 'expect';
 import type {HTTPRequest} from 'puppeteer-core/internal/api/HTTPRequest.js';
+import type {JSHandle} from 'puppeteer-core/internal/api/JSHandle.js';
 import type {WebWorker} from 'puppeteer-core/internal/api/WebWorker.js';
 import {WebWorkerEvent} from 'puppeteer-core/internal/api/WebWorker.js';
 import type {ConsoleMessage} from 'puppeteer-core/internal/common/ConsoleMessage.js';
+import type {RemoteException} from 'puppeteer-core/internal/common/RemoteException.js';
 
 import {getTestState, setupTestBrowserHooks} from './mocha-utils.js';
 import {waitEvent} from './utils.js';
@@ -196,6 +198,57 @@ describe('Workers', function () {
     });
     const errorLog = await errorPromise;
     expect(errorLog.message).toContain('this is my error');
+  });
+
+  it.only('should emit exception events on the worker and the page', async () => {
+    const {page} = await getTestState();
+
+    const workerCreated = waitEvent<WebWorker>(page, 'workercreated');
+    await page.evaluate(() => {
+      return new Worker(`data:text/javascript,1`);
+    });
+    const worker = await workerCreated;
+
+    const [workerException, pageException] = await Promise.all([
+      waitEvent<RemoteException>(worker, WebWorkerEvent.Exception),
+      waitEvent<RemoteException>(page, 'exception'),
+      worker.evaluate(() => {
+        setTimeout(() => {
+          throw new Error('worker error');
+        });
+      }),
+    ]);
+    expect(workerException).toBe(pageException);
+    expect(workerException.text()).toContain('worker error');
+  });
+
+  it.only('should expose the remote exception via a moved handle', async () => {
+    const {page} = await getTestState();
+
+    const workerCreated = waitEvent<WebWorker>(page, 'workercreated');
+    await page.evaluate(() => {
+      return new Worker(`data:text/javascript,1`);
+    });
+    const worker = await workerCreated;
+
+    const handlePromise = new Promise<JSHandle>(resolve => {
+      worker.once(WebWorkerEvent.Exception, exception => {
+        resolve(exception.handle()!.move());
+      });
+    });
+    await worker.evaluate(() => {
+      setTimeout(() => {
+        const error = new Error('custom') as Error & {code: string};
+        error.code = 'E_WORKER';
+        throw error;
+      });
+    });
+    using handle = await handlePromise;
+    expect(
+      await handle.evaluate(error => {
+        return (error as Error & {code: string}).code;
+      }),
+    ).toBe('E_WORKER');
   });
 
   it('can be closed', async () => {

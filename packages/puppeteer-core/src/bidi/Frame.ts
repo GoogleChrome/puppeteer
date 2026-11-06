@@ -56,6 +56,7 @@ import {BidiFrameRealm} from './Realm.js';
 import {
   getConsoleMessage,
   isConsoleLogEntry,
+  createRemoteExceptionFromLogEntry,
   isJavaScriptLogEntry,
   rewriteNavigationError,
 } from './util.js';
@@ -212,6 +213,10 @@ export class BidiFrame extends Frame {
 
         error.stack = [...messageLines, ...stackLines].join('\n');
         this.page().trustedEmitter.emit(PageEvent.PageError, error);
+        this.page().trustedEmitter.emit(
+          PageEvent.Exception,
+          createRemoteExceptionFromLogEntry(entry),
+        );
       } else {
         this.#logger?.(DEBUG_PREFIXES.error)?.(
           `Unhandled LogEntry with type "${entry.type}", text "${entry.text}" and level "${entry.level}"`,

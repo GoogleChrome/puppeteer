@@ -7,6 +7,7 @@ import * as Bidi from 'webdriver-bidi-protocol';
 
 import type {Extension} from '../api/Extension.js';
 import type {JSHandle} from '../api/JSHandle.js';
+import {PageEvent} from '../api/Page.js';
 import {Realm} from '../api/Realm.js';
 import {WebWorkerEvent} from '../api/WebWorker.js';
 import {ARIAQueryHandler} from '../common/AriaQueryHandler.js';
@@ -27,11 +28,8 @@ import type {PuppeteerInjectedUtil} from '../injected/injected.js';
 import {AsyncIterableUtil} from '../util/AsyncIterableUtil.js';
 import {stringifyFunction} from '../util/Function.js';
 
-import type {
-  Realm as BidiRealmCore,
-  DedicatedWorkerRealm,
-  SharedWorkerRealm,
-} from './core/Realm.js';
+import {DedicatedWorkerRealm} from './core/Realm.js';
+import type {Realm as BidiRealmCore, SharedWorkerRealm} from './core/Realm.js';
 import type {WindowRealm} from './core/Realm.js';
 import {BidiDeserializer} from './Deserializer.js';
 import {BidiElementHandle} from './ElementHandle.js';
@@ -41,8 +39,10 @@ import {BidiJSHandle} from './JSHandle.js';
 import {BidiSerializer} from './Serializer.js';
 import {
   createEvaluationError,
+  createRemoteExceptionFromLogEntry,
   getConsoleMessage,
   isConsoleLogEntry,
+  isJavaScriptLogEntry,
   rewriteEvaluationError,
 } from './util.js';
 import type {BidiWebWorker} from './WebWorker.js';
@@ -456,6 +456,16 @@ export class BidiWorkerRealm extends BidiRealm {
           this.#worker,
         );
         this.#worker.emit(WebWorkerEvent.Console, message);
+      } else if (isJavaScriptLogEntry(entry)) {
+        const exception = createRemoteExceptionFromLogEntry(entry);
+        this.#worker.emit(WebWorkerEvent.Exception, exception);
+        // Match CDP: exceptions in dedicated workers are also reported on the
+        // page that owns the worker.
+        if (this.realm instanceof DedicatedWorkerRealm) {
+          this.#worker.frame
+            .page()
+            .trustedEmitter.emit(PageEvent.Exception, exception);
+        }
       }
     });
   }
