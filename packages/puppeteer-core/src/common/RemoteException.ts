@@ -136,6 +136,11 @@ export class RemoteException {
    * is `undefined` for thrown primitives and always `undefined` with
    * WebDriver BiDi.
    *
+   * It is also `undefined` for exceptions thrown by code that Puppeteer
+   * injected, for example from a callback scheduled inside
+   * {@link Page.evaluate}, because the browser does not report a remote
+   * exception object for them.
+   *
    * The handle is **disposed automatically right after the `exception` event
    * has been dispatched** so that the browser can release the exception. To
    * keep using it beyond the synchronous part of your listener, call

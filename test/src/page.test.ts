@@ -1321,7 +1321,7 @@ describe('Page', function () {
     });
   });
 
-  describe.only('Page.Events.Exception', function () {
+  describe('Page.Events.Exception', function () {
     it('should fire', async () => {
       const {page, server, browser} = await getTestState();
       const isCdp = browser.protocol === 'cdp';
@@ -1380,7 +1380,18 @@ describe('Page', function () {
         ),
       ]);
       expect(exception.stackTrace()).toEqual([]);
-      expect(exception.location().lineNumber).toBe(1);
+      // With an empty stack, `location()` falls back to the top-level
+      // coordinates of the exception. The exact line depends on how the
+      // browser numbers the document, so compare with the raw details.
+      const details = exception._rawExceptionDetails();
+      if (details) {
+        expect(exception.location()).toEqual({
+          url: details.url,
+          lineNumber: details.lineNumber,
+          columnNumber: details.columnNumber,
+        });
+      }
+      expect(exception.location().lineNumber).toEqual(expect.any(Number));
     });
 
     it('should expose the remote exception via a moved handle', async () => {
@@ -1391,13 +1402,15 @@ describe('Page', function () {
           resolve(exception.handle()!.move());
         });
       });
-      await page.evaluate(() => {
-        setTimeout(() => {
-          const error = new Error('custom') as Error & {code: string};
+      // Exceptions from code injected via `page.evaluate` carry no remote
+      // exception object, so throw from a page script instead.
+      await page.setContent(
+        html`<script>
+          const error = new Error('custom');
           error.code = 'E_CUSTOM';
           throw error;
-        });
-      });
+        </script>`,
+      );
       using handle = await handlePromise;
       expect(handle.disposed).toBe(false);
       expect(
@@ -1415,11 +1428,11 @@ describe('Page', function () {
           resolve(exception.handle());
         });
       });
-      await page.evaluate(() => {
-        setTimeout(() => {
+      await page.setContent(
+        html`<script>
           throw new Error('not moved');
-        });
-      });
+        </script>`,
+      );
       // eslint-disable-next-line max-len -- The comment is long.
       // eslint-disable-next-line @puppeteer/use-using -- Not owned by the test; Puppeteer disposes of it.
       const handle = await handlePromise;

@@ -200,7 +200,7 @@ describe('Workers', function () {
     expect(errorLog.message).toContain('this is my error');
   });
 
-  it.only('should emit exception events on the worker and the page', async () => {
+  it('should emit exception events on the worker and the page', async () => {
     const {page} = await getTestState();
 
     const workerCreated = waitEvent<WebWorker>(page, 'workercreated');
@@ -222,12 +222,20 @@ describe('Workers', function () {
     expect(workerException.text()).toContain('worker error');
   });
 
-  it.only('should expose the remote exception via a moved handle', async () => {
+  it('should expose the remote exception via a moved handle', async () => {
     const {page} = await getTestState();
 
+    // Exceptions from code injected via `worker.evaluate` carry no remote
+    // exception object, so throw from the worker script instead.
     const workerCreated = waitEvent<WebWorker>(page, 'workercreated');
     await page.evaluate(() => {
-      return new Worker(`data:text/javascript,1`);
+      (globalThis as unknown as {worker: Worker}).worker = new Worker(
+        `data:text/javascript,self.onmessage = () => {
+          const error = new Error('custom');
+          error.code = 'E_WORKER';
+          throw error;
+        };`,
+      );
     });
     const worker = await workerCreated;
 
@@ -236,12 +244,8 @@ describe('Workers', function () {
         resolve(exception.handle()!.move());
       });
     });
-    await worker.evaluate(() => {
-      setTimeout(() => {
-        const error = new Error('custom') as Error & {code: string};
-        error.code = 'E_WORKER';
-        throw error;
-      });
+    await page.evaluate(() => {
+      (globalThis as unknown as {worker: Worker}).worker.postMessage(null);
     });
     using handle = await handlePromise;
     expect(

@@ -204,7 +204,7 @@ describe('Target', function () {
     ).toBe('[object ServiceWorkerGlobalScope]');
   });
 
-  it.only('should emit exceptions on a service worker but not on the page', async () => {
+  it('should emit exceptions on a service worker but not on the page', async () => {
     const {page, server, context} = await getTestState();
 
     await page.goto(server.PREFIX + '/serviceworkers/empty/sw.html');
