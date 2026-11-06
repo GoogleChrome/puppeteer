@@ -1157,6 +1157,13 @@
     "comment": "We can't connect to a browser started with pipe:true"
   },
   {
+    "testIdPattern": "[browser.test] Browser specs Browser.on(\"console\") should report console messages from dedicated workers",
+    "platforms": ["darwin", "linux", "win32"],
+    "parameters": ["firefox", "webDriverBiDi"],
+    "expectations": ["SKIP"],
+    "comment": "Firefox does not support web worker targets in Puppeteer, see [worker.test] *"
+  },
+  {
     "testIdPattern": "[browser.test] Browser specs Browser.process should not return child_process for remote browser",
     "platforms": ["darwin", "linux", "win32"],
     "parameters": ["firefox", "webDriverBiDi"],
@@ -1169,6 +1176,13 @@
     "parameters": ["chrome", "pipe"],
     "expectations": ["SKIP"],
     "comment": "We can't connect to a browser started with pipe:true"
+  },
+  {
+    "testIdPattern": "[browsercontext.test] BrowserContext BrowserContext.on(\"console\") should only report console messages from workers of its own pages",
+    "platforms": ["darwin", "linux", "win32"],
+    "parameters": ["firefox", "webDriverBiDi"],
+    "expectations": ["SKIP"],
+    "comment": "Firefox does not support web worker targets in Puppeteer, see [worker.test] *"
   },
   {
     "testIdPattern": "[browsercontext.test] BrowserContext should work across sessions",

@@ -397,7 +397,11 @@ export class CdpPage extends Page {
         const noListenersForConsoleOnWorker =
           worker.listenerCount(WebWorkerEvent.Console) === 0;
 
-        if (noListenersForConsoleOnPage && noListenersForConsoleOnWorker) {
+        if (
+          noListenersForConsoleOnPage &&
+          noListenersForConsoleOnWorker &&
+          !this.#hasBrowserConsoleListeners()
+        ) {
           // eslint-disable-next-line max-len -- The comment is long.
           // eslint-disable-next-line @puppeteer/use-using -- These are not owned by this function.
           for (const arg of message.args()) {
@@ -408,9 +412,7 @@ export class CdpPage extends Page {
           return;
         }
 
-        if (!noListenersForConsoleOnPage) {
-          this.emit(PageEvent.Console, message);
-        }
+        this.#emitConsoleMessage(message);
       });
       this.emit(PageEvent.WorkerCreated, worker);
     }

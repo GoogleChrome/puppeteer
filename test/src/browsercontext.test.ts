@@ -8,6 +8,7 @@ import expect from 'expect';
 import {TimeoutError} from 'puppeteer';
 import type {HTTPRequest} from 'puppeteer-core/internal/api/HTTPRequest.js';
 import type {Page} from 'puppeteer-core/internal/api/Page.js';
+import type {WebWorker} from 'puppeteer-core/internal/api/WebWorker.js';
 import type {ConsoleMessage} from 'puppeteer-core/internal/common/ConsoleMessage.js';
 
 import {getTestState, setupTestBrowserHooks} from './mocha-utils.js';
@@ -490,6 +491,47 @@ describe('BrowserContext', function () {
           return message.text();
         }),
       ).toEqual(['from-own-context']);
+    });
+
+    it('should only report console messages from workers of its own pages', async () => {
+      const {browser, page, context} = await getTestState();
+
+      await using otherContext = await browser.createBrowserContext();
+      const otherPage = await otherContext.newPage();
+
+      const messages: ConsoleMessage[] = [];
+      context.on('console', message => {
+        messages.push(message);
+      });
+
+      await Promise.all([
+        waitEvent<ConsoleMessage>(otherContext, 'console', message => {
+          return message.text() === 'other-done';
+        }),
+        otherPage.evaluate(() => {
+          return new Worker(
+            `data:text/javascript,console.log('from-other-worker');console.log('other-done')`,
+          );
+        }),
+      ]);
+      const [worker] = await Promise.all([
+        waitEvent<WebWorker>(page, 'workercreated'),
+        waitEvent<ConsoleMessage>(context, 'console', message => {
+          return message.text() === 'own-done';
+        }),
+        page.evaluate(() => {
+          return new Worker(
+            `data:text/javascript,console.log('from-own-worker');console.log('own-done')`,
+          );
+        }),
+      ]);
+
+      expect(
+        messages.map(message => {
+          return message.text();
+        }),
+      ).toEqual(['from-own-worker', 'own-done']);
+      expect(messages[0]!.worker()).toBe(worker);
     });
   });
 
