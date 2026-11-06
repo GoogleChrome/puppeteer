@@ -97,6 +97,32 @@ export class CdpKeyboard extends Keyboard {
     return 0;
   }
 
+  #hasModifierKey(key: string): boolean {
+    switch (key) {
+      case 'Alt':
+        return (
+          this.#pressedKeys.has('AltLeft') || this.#pressedKeys.has('AltRight')
+        );
+      case 'Control':
+        return (
+          this.#pressedKeys.has('ControlLeft') ||
+          this.#pressedKeys.has('ControlRight')
+        );
+      case 'Meta':
+        return (
+          this.#pressedKeys.has('MetaLeft') ||
+          this.#pressedKeys.has('MetaRight')
+        );
+      case 'Shift':
+        return (
+          this.#pressedKeys.has('ShiftLeft') ||
+          this.#pressedKeys.has('ShiftRight')
+        );
+      default:
+        return false;
+    }
+  }
+
   #keyDescriptionForString(keyString: KeyInput): KeyDescription {
     const shift = this._modifiers & 8;
     const description = {
@@ -154,8 +180,10 @@ export class CdpKeyboard extends Keyboard {
   override async up(key: KeyInput): Promise<void> {
     const description = this.#keyDescriptionForString(key);
 
-    this._modifiers &= ~this.#modifierBit(description.key);
     this.#pressedKeys.delete(description.code);
+    if (!this.#hasModifierKey(description.key)) {
+      this._modifiers &= ~this.#modifierBit(description.key);
+    }
     await this.#client.send('Input.dispatchKeyEvent', {
       type: 'keyUp',
       modifiers: this._modifiers,

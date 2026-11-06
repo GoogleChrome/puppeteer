@@ -430,6 +430,57 @@ describe('Keyboard', function () {
     );
     await keyboard.up('Shift');
   });
+  it('should not clear Shift modifier when only one of multiple Shift keys is released', async () => {
+    const {page, server} = await getTestState();
+
+    await page.goto(server.PREFIX + '/input/keyboard.html');
+    const keyboard = page.keyboard;
+    await keyboard.down('ShiftLeft');
+    await keyboard.down('ShiftRight');
+    await keyboard.up('ShiftRight');
+    expect(
+      await page.evaluate(() => {
+        return (globalThis as any).getResult();
+      }),
+    ).toBe(
+      [
+        'Keydown: Shift ShiftLeft [Shift]',
+        'Keydown: Shift ShiftRight [Shift]',
+        'Keyup: Shift ShiftRight [Shift]',
+      ].join('\n'),
+    );
+    await keyboard.type('a');
+    expect(
+      await page.evaluate(() => {
+        return (globalThis as any).getResult();
+      }),
+    ).toBe(
+      [
+        'Keydown: Shift ShiftLeft [Shift]',
+        'Keydown: Shift ShiftRight [Shift]',
+        'Keyup: Shift ShiftRight [Shift]',
+        'Keydown: A KeyA [Shift]',
+        'input: A insertText false',
+        'Keyup: A KeyA [Shift]',
+      ].join('\n'),
+    );
+    await keyboard.up('ShiftLeft');
+    expect(
+      await page.evaluate(() => {
+        return (globalThis as any).getResult();
+      }),
+    ).toBe(
+      [
+        'Keydown: Shift ShiftLeft [Shift]',
+        'Keydown: Shift ShiftRight [Shift]',
+        'Keyup: Shift ShiftRight [Shift]',
+        'Keydown: A KeyA [Shift]',
+        'input: A insertText false',
+        'Keyup: A KeyA [Shift]',
+        'Keyup: Shift ShiftLeft []',
+      ].join('\n'),
+    );
+  });
   it('should not type canceled events', async () => {
     const {page, server} = await getTestState();
 
