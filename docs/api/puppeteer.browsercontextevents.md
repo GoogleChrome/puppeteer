@@ -67,6 +67,66 @@ Default
 </td></tr>
 <tr><td>
 
+<span id="requestfailed">requestfailed</span>
+
+</td><td>
+
+</td><td>
+
+[HTTPRequest](./puppeteer.httprequest.md)
+
+</td><td>
+
+</td><td>
+
+</td></tr>
+<tr><td>
+
+<span id="requestfinished">requestfinished</span>
+
+</td><td>
+
+</td><td>
+
+[HTTPRequest](./puppeteer.httprequest.md)
+
+</td><td>
+
+</td><td>
+
+</td></tr>
+<tr><td>
+
+<span id="requestservedfromcache">requestservedfromcache</span>
+
+</td><td>
+
+</td><td>
+
+[HTTPRequest](./puppeteer.httprequest.md)
+
+</td><td>
+
+</td><td>
+
+</td></tr>
+<tr><td>
+
+<span id="response">response</span>
+
+</td><td>
+
+</td><td>
+
+[HTTPResponse](./puppeteer.httpresponse.md)
+
+</td><td>
+
+</td><td>
+
+</td></tr>
+<tr><td>
+
 <span id="targetchanged">targetchanged</span>
 
 </td><td>

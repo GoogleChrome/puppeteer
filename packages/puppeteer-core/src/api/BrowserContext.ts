@@ -32,6 +32,7 @@ import type {
   WaitForTargetOptions,
 } from './Browser.js';
 import type {HTTPRequest} from './HTTPRequest.js';
+import type {HTTPResponse} from './HTTPResponse.js';
 import type {Page} from './Page.js';
 import type {Target} from './Target.js';
 
@@ -124,6 +125,51 @@ export const enum BrowserContextEvent {
    * @experimental
    */
   Request = 'request',
+  /**
+   * Emitted when a request issued by any page in the browser context is
+   * served from the memory cache. Contains a {@link HTTPRequest} instance.
+   *
+   * @remarks
+   * The same delivery rules as for {@link BrowserContextEvent.Request} apply.
+   *
+   * @experimental
+   */
+  RequestServedFromCache = 'requestservedfromcache',
+  /**
+   * Emitted when a response is received for a request issued by any page in
+   * the browser context. Contains a {@link HTTPResponse} instance.
+   *
+   * @remarks
+   * Use {@link HTTPResponse.request} to access the originating request. The
+   * same delivery rules as for {@link BrowserContextEvent.Request} apply.
+   *
+   * @experimental
+   */
+  Response = 'response',
+  /**
+   * Emitted when a request issued by any page in the browser context fails,
+   * for example by timing out. Contains a {@link HTTPRequest} instance.
+   *
+   * @remarks
+   * HTTP error responses, such as 404 or 503, are still successful responses
+   * from HTTP standpoint, so the request completes with
+   * {@link BrowserContextEvent.RequestFinished} and not with
+   * {@link BrowserContextEvent.RequestFailed}. The same delivery rules as
+   * for {@link BrowserContextEvent.Request} apply.
+   *
+   * @experimental
+   */
+  RequestFailed = 'requestfailed',
+  /**
+   * Emitted when a request issued by any page in the browser context
+   * finishes successfully. Contains a {@link HTTPRequest} instance.
+   *
+   * @remarks
+   * The same delivery rules as for {@link BrowserContextEvent.Request} apply.
+   *
+   * @experimental
+   */
+  RequestFinished = 'requestfinished',
 }
 
 /**
@@ -135,6 +181,10 @@ export interface BrowserContextEvents extends Record<EventType, unknown> {
   [BrowserContextEvent.TargetDestroyed]: Target;
   [BrowserContextEvent.Console]: ConsoleMessage;
   [BrowserContextEvent.Request]: HTTPRequest;
+  [BrowserContextEvent.RequestServedFromCache]: HTTPRequest;
+  [BrowserContextEvent.Response]: HTTPResponse;
+  [BrowserContextEvent.RequestFailed]: HTTPRequest;
+  [BrowserContextEvent.RequestFinished]: HTTPRequest;
 }
 
 /**

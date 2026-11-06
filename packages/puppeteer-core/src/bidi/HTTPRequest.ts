@@ -6,8 +6,6 @@
 import type {Protocol} from 'devtools-protocol';
 import type * as Bidi from 'webdriver-bidi-protocol';
 
-import {BrowserEvent} from '../api/Browser.js';
-import {BrowserContextEvent} from '../api/BrowserContext.js';
 import type {CDPSession} from '../api/CDPSession.js';
 import type {
   ContinueRequestOverridesInternal,
@@ -21,7 +19,6 @@ import {
   handleError,
   InterceptResolutionAction,
 } from '../api/HTTPRequest.js';
-import {PageEvent} from '../api/Page.js';
 import type {WebWorker} from '../api/WebWorker.js';
 import {DEBUG_PREFIXES, type Logger} from '../common/Debug.js';
 import {UnsupportedOperation} from '../common/Errors.js';
@@ -30,6 +27,11 @@ import {stringToBase64} from '../util/encoding.js';
 import type {Request} from './core/Request.js';
 import type {BidiFrame} from './Frame.js';
 import {BidiHTTPResponse} from './HTTPResponse.js';
+import {
+  emitRequest,
+  emitRequestFailed,
+  emitRequestFinished,
+} from './NetworkEvents.js';
 import type {BidiPage} from './Page.js';
 
 export const requests = new WeakMap<Request, BidiHTTPRequest>();
@@ -98,15 +100,11 @@ export class BidiHTTPRequest extends HTTPRequest {
       this.#redirectChain.push(this);
 
       request.once('success', () => {
-        this.#frame
-          .page()
-          .trustedEmitter.emit(PageEvent.RequestFinished, httpRequest);
+        emitRequestFinished(this.#frame.page(), httpRequest);
       });
 
       request.once('error', () => {
-        this.#frame
-          .page()
-          .trustedEmitter.emit(PageEvent.RequestFailed, httpRequest);
+        emitRequestFailed(this.#frame.page(), httpRequest);
       });
       void httpRequest.finalizeInterceptions();
     });
@@ -132,12 +130,7 @@ export class BidiHTTPRequest extends HTTPRequest {
     });
     this.#request.on('authenticate', this.#handleAuthentication);
 
-    const page = this.#frame.page();
-    page.trustedEmitter.emit(PageEvent.Request, this);
-    page
-      .browserContext()
-      .trustedEmitter.emit(BrowserContextEvent.Request, this);
-    page.browser().trustedEmitter.emit(BrowserEvent.Request, this);
+    emitRequest(this.#frame.page(), this);
   }
 
   protected canBeIntercepted(): boolean {

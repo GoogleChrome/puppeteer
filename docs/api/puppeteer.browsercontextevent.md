@@ -73,6 +73,74 @@ These listeners only observe requests. Do not call `request.continue()`, `abort(
 </td></tr>
 <tr><td>
 
+RequestFailed
+
+</td><td>
+
+`"requestfailed"`
+
+</td><td>
+
+**_(Experimental)_** Emitted when a request issued by any page in the browser context fails, for example by timing out. Contains a [HTTPRequest](./puppeteer.httprequest.md) instance.
+
+**Remarks:**
+
+HTTP error responses, such as 404 or 503, are still successful responses from HTTP standpoint, so the request completes with [BrowserContextEvent.RequestFinished](./puppeteer.browsercontextevent.md) and not with [BrowserContextEvent.RequestFailed](./puppeteer.browsercontextevent.md). The same delivery rules as for [BrowserContextEvent.Request](./puppeteer.browsercontextevent.md) apply.
+
+</td></tr>
+<tr><td>
+
+RequestFinished
+
+</td><td>
+
+`"requestfinished"`
+
+</td><td>
+
+**_(Experimental)_** Emitted when a request issued by any page in the browser context finishes successfully. Contains a [HTTPRequest](./puppeteer.httprequest.md) instance.
+
+**Remarks:**
+
+The same delivery rules as for [BrowserContextEvent.Request](./puppeteer.browsercontextevent.md) apply.
+
+</td></tr>
+<tr><td>
+
+RequestServedFromCache
+
+</td><td>
+
+`"requestservedfromcache"`
+
+</td><td>
+
+**_(Experimental)_** Emitted when a request issued by any page in the browser context is served from the memory cache. Contains a [HTTPRequest](./puppeteer.httprequest.md) instance.
+
+**Remarks:**
+
+The same delivery rules as for [BrowserContextEvent.Request](./puppeteer.browsercontextevent.md) apply.
+
+</td></tr>
+<tr><td>
+
+Response
+
+</td><td>
+
+`"response"`
+
+</td><td>
+
+**_(Experimental)_** Emitted when a response is received for a request issued by any page in the browser context. Contains a [HTTPResponse](./puppeteer.httpresponse.md) instance.
+
+**Remarks:**
+
+Use [HTTPResponse.request()](./puppeteer.httpresponse.request.md) to access the originating request. The same delivery rules as for [BrowserContextEvent.Request](./puppeteer.browsercontextevent.md) apply.
+
+</td></tr>
+<tr><td>
+
 TargetChanged
 
 </td><td>

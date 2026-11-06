@@ -7,6 +7,7 @@
 import expect from 'expect';
 import {TimeoutError} from 'puppeteer';
 import type {HTTPRequest} from 'puppeteer-core/internal/api/HTTPRequest.js';
+import type {HTTPResponse} from 'puppeteer-core/internal/api/HTTPResponse.js';
 import type {Page} from 'puppeteer-core/internal/api/Page.js';
 import type {WebWorker} from 'puppeteer-core/internal/api/WebWorker.js';
 import type {ConsoleMessage} from 'puppeteer-core/internal/common/ConsoleMessage.js';
@@ -563,6 +564,95 @@ describe('BrowserContext', function () {
           return request.url();
         }),
       ).toEqual([server.EMPTY_PAGE]);
+    });
+  });
+
+  describe('BrowserContext network events', function () {
+    it('should only report network events from its own pages', async () => {
+      const {browser, page, context, server} = await getTestState();
+
+      await using otherContext = await browser.createBrowserContext();
+      const otherPage = await otherContext.newPage();
+
+      const seen = {
+        response: [] as Array<Page | null>,
+        requestfinished: [] as Array<Page | null>,
+        requestfailed: [] as Array<Page | null>,
+        requestservedfromcache: [] as Array<Page | null>,
+      };
+      const onResponse = (response: HTTPResponse) => {
+        if (!isFavicon(response)) {
+          seen.response.push(response.request().page());
+        }
+      };
+      const record = (event: Exclude<keyof typeof seen, 'response'>) => {
+        return (request: HTTPRequest) => {
+          if (!isFavicon(request)) {
+            seen[event].push(request.page());
+          }
+        };
+      };
+      const onFinished = record('requestfinished');
+      const onFailed = record('requestfailed');
+      const onCached = record('requestservedfromcache');
+      context.on('response', onResponse);
+      context.on('requestfinished', onFinished);
+      context.on('requestfailed', onFailed);
+      context.on('requestservedfromcache', onCached);
+
+      // Triggers all four events on the given page.
+      const triggerNetworkEvents = async (target: Page) => {
+        await target.setRequestInterception(true);
+        const onRequest = (request: HTTPRequest) => {
+          if (request.url().endsWith('css')) {
+            void request.abort();
+          } else {
+            void request.continue();
+          }
+        };
+        target.on('request', onRequest);
+        await target.goto(server.PREFIX + '/one-style.html');
+        target.off('request', onRequest);
+        await target.setRequestInterception(false);
+
+        await target.goto(server.PREFIX + '/cached/one-script.html');
+        await new Promise(res => {
+          setTimeout(res, 1000);
+        });
+        await target.reload();
+      };
+
+      try {
+        await triggerNetworkEvents(otherPage);
+        await triggerNetworkEvents(page);
+
+        const summary = Object.fromEntries(
+          Object.entries(seen).map(([event, pages]) => {
+            return [
+              event,
+              {
+                own: pages.some(reportedPage => {
+                  return reportedPage === page;
+                }),
+                foreign: pages.filter(reportedPage => {
+                  return reportedPage !== page;
+                }).length,
+              },
+            ];
+          }),
+        );
+        expect(summary).toEqual({
+          response: {own: true, foreign: 0},
+          requestfinished: {own: true, foreign: 0},
+          requestfailed: {own: true, foreign: 0},
+          requestservedfromcache: {own: true, foreign: 0},
+        });
+      } finally {
+        context.off('response', onResponse);
+        context.off('requestfinished', onFinished);
+        context.off('requestfailed', onFailed);
+        context.off('requestservedfromcache', onCached);
+      }
     });
   });
 });

@@ -50,6 +50,7 @@ import {BidiElementHandle} from './ElementHandle.js';
 import {ExposableFunction} from './ExposedFunction.js';
 import {BidiHTTPRequest, requests} from './HTTPRequest.js';
 import type {BidiHTTPResponse} from './HTTPResponse.js';
+import {emitRequestFailed, emitRequestFinished} from './NetworkEvents.js';
 import type {BidiPage} from './Page.js';
 import type {BidiRealm} from './Realm.js';
 import {BidiFrameRealm} from './Realm.js';
@@ -141,11 +142,11 @@ export class BidiFrame extends Frame {
         this.logger,
       );
       request.once('success', () => {
-        this.page().trustedEmitter.emit(PageEvent.RequestFinished, httpRequest);
+        emitRequestFinished(this.page(), httpRequest);
       });
 
       request.once('error', () => {
-        this.page().trustedEmitter.emit(PageEvent.RequestFailed, httpRequest);
+        emitRequestFailed(this.page(), httpRequest);
       });
       void httpRequest.finalizeInterceptions();
     });
