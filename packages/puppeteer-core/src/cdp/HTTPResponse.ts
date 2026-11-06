@@ -5,16 +5,16 @@
  */
 import type {Protocol} from 'devtools-protocol';
 
-import {CDPSessionEvent} from '../api/CDPSession.js';
 import type {Frame} from '../api/Frame.js';
 import {HTTPResponse, type RemoteAddress} from '../api/HTTPResponse.js';
-import {ProtocolError, TargetCloseError} from '../common/Errors.js';
+import {ProtocolError} from '../common/Errors.js';
 import {SecurityDetails} from '../common/SecurityDetails.js';
 import {Deferred} from '../util/Deferred.js';
 import {stringToTypedArray} from '../util/encoding.js';
 import {normalizeHeaderValue} from '../util/httpUtils.js';
 
 import type {CdpHTTPRequest} from './HTTPRequest.js';
+import {createResponseBodyStream} from './ResponseBodyStream.js';
 
 /**
  * @internal
@@ -159,83 +159,14 @@ export class CdpHTTPResponse extends HTTPResponse {
     if (this.#bodyLoadedDeferred.finished()) {
       return await this.#contentStream();
     }
-    // Use the request's client, as it might have been updated for an adopted
-    // OOPIF.
-    const client = this.#request.client;
-    const requestId = this.#request.id;
-    let controller!: ReadableStreamDefaultController<Uint8Array>;
-    // Events received before the buffered data is enqueued.
-    let pending: Array<() => void> | null = [];
-    const run = (action: () => void) => {
-      if (pending) {
-        pending.push(action);
-      } else {
-        action();
-      }
-    };
-
-    const onDataReceived = (event: Protocol.Network.DataReceivedEvent) => {
-      if (event.requestId !== requestId || !event.data) {
-        return;
-      }
-      const chunk = stringToTypedArray(event.data, true);
-      run(() => {
-        controller.enqueue(chunk);
-      });
-    };
-    const onLoadingFinished = (
-      event: Protocol.Network.LoadingFinishedEvent,
-    ) => {
-      if (event.requestId !== requestId) {
-        return;
-      }
-      cleanup();
-      run(() => {
-        controller.close();
-      });
-    };
-    const onLoadingFailed = (event: Protocol.Network.LoadingFailedEvent) => {
-      if (event.requestId !== requestId) {
-        return;
-      }
-      cleanup();
-      run(() => {
-        controller.error(new Error(`Loading failed: ${event.errorText}`));
-      });
-    };
-    const onDisconnected = () => {
-      cleanup();
-      run(() => {
-        controller.error(new TargetCloseError('Session closed.'));
-      });
-    };
-    const cleanup = () => {
-      client.off('Network.dataReceived', onDataReceived);
-      client.off('Network.loadingFinished', onLoadingFinished);
-      client.off('Network.loadingFailed', onLoadingFailed);
-      client.off(CDPSessionEvent.Disconnected, onDisconnected);
-    };
-
-    const stream = new ReadableStream<Uint8Array>({
-      start(streamController) {
-        controller = streamController;
-      },
-      cancel() {
-        cleanup();
-      },
-    });
-    client.on('Network.dataReceived', onDataReceived);
-    client.on('Network.loadingFinished', onLoadingFinished);
-    client.on('Network.loadingFailed', onLoadingFailed);
-    client.on(CDPSessionEvent.Disconnected, onDisconnected);
-
-    let bufferedData: string;
     try {
-      ({bufferedData} = await client.send('Network.streamResourceContent', {
-        requestId,
-      }));
+      // Use the request's client, as it might have been updated for an adopted
+      // OOPIF.
+      return await createResponseBodyStream(
+        this.#request.client,
+        this.#request.id,
+      );
     } catch (error) {
-      cleanup();
       if (
         error instanceof ProtocolError &&
         error.originalMessage.includes('already finished loading')
@@ -244,16 +175,6 @@ export class CdpHTTPResponse extends HTTPResponse {
       }
       throw error;
     }
-
-    if (bufferedData) {
-      controller.enqueue(stringToTypedArray(bufferedData, true));
-    }
-    const actions = pending;
-    pending = null;
-    for (const action of actions) {
-      action();
-    }
-    return stream;
   }
 
   async #contentStream(): Promise<ReadableStream<Uint8Array>> {
