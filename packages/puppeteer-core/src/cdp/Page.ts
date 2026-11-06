@@ -311,6 +311,8 @@ export class CdpPage extends Page {
     this.#primaryTargetClient = newSession;
     this.#primaryTarget = newSession.target();
     assert(this.#primaryTarget, 'Missing target on swap');
+    // The activated target belongs to this page.
+    this.#primaryTarget.pagePromise = Promise.resolve(this);
     this.#keyboard.updateClient(newSession);
     this.#mouse.updateClient(newSession);
     this.#touchscreen.updateClient(newSession);

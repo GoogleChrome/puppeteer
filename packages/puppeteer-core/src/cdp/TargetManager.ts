@@ -11,6 +11,7 @@ import type {TargetFilterCallback} from '../api/Browser.js';
 import type {NetworkRestrictions} from '../api/Browser.js';
 import type {CDPSession} from '../api/CDPSession.js';
 import {CDPSessionEvent} from '../api/CDPSession.js';
+import {TargetType} from '../api/Target.js';
 import {DEBUG_PREFIXES, type Logger} from '../common/Debug.js';
 import {EventEmitter} from '../common/EventEmitter.js';
 import {assertSupportedUrlRestrictions} from '../common/util.js';
@@ -38,7 +39,10 @@ function isPageTargetBecomingPrimary(
   target: CdpTarget,
   newTargetInfo: Protocol.Target.TargetInfo,
 ): boolean {
-  return Boolean(target._subtype()) && !newTargetInfo.subtype;
+  // Only prerender targets are prepared for a swap (see
+  // `CdpPage.#onSecondaryTarget`). When another subtype is cleared, it is not
+  // an activation.
+  return target._subtype() === 'prerender' && !newTargetInfo.subtype;
 }
 
 /**
@@ -323,6 +327,11 @@ export class TargetManager
         'Target that is being activated is missing a CDPSession.',
       );
       session.parentSession()?.emit(CDPSessionEvent.Swapped, session);
+      target._targetInfoChanged(event.targetInfo);
+      // The prerendered target was hidden until now. Report it as a new
+      // target instead of a changed one.
+      this.emit(TargetManagerEvent.TargetAvailable, target);
+      return;
     }
 
     target._targetInfoChanged(event.targetInfo);
@@ -557,6 +566,10 @@ export class TargetManager
       parentSession.target()._removeChildTarget(target);
     }
     this.#attachedTargetsByTargetId.delete(target._targetId);
+    if (target.type() === TargetType.TAB) {
+      // Do not wait for a page target of a tab that is gone.
+      this.#finishInitializationIfReady(target._targetId);
+    }
     this.emit(TargetManagerEvent.TargetGone, target);
   };
 
