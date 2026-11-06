@@ -179,7 +179,7 @@
     "platforms": ["darwin", "linux", "win32"],
     "parameters": ["webDriverBiDi"],
     "expectations": ["SKIP"],
-    "comment": "CDP-specific feature, not supported in WebDriver BiDi"
+    "comment": "Not supported in WebDriver BiDi yet - https://github.com/w3c/webdriver-bidi/issues/958"
   },
   {
     "testIdPattern": "[page.test] Page Page.Events.Issue *",
