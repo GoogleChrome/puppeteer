@@ -234,17 +234,28 @@ export class CdpPage extends Page {
     networkManagerEmitter.on(
       NetworkManagerEvent.RequestServedFromCache,
       request => {
-        this.emit(PageEvent.RequestServedFromCache, request!);
+        this.emit(PageEvent.RequestServedFromCache, request);
+        this.browserContext().emit(
+          BrowserContextEvent.RequestServedFromCache,
+          request,
+        );
+        this.browser().emit(BrowserEvent.RequestServedFromCache, request);
       },
     );
     networkManagerEmitter.on(NetworkManagerEvent.Response, response => {
       this.emit(PageEvent.Response, response);
+      this.browserContext().emit(BrowserContextEvent.Response, response);
+      this.browser().emit(BrowserEvent.Response, response);
     });
     networkManagerEmitter.on(NetworkManagerEvent.RequestFailed, request => {
       this.emit(PageEvent.RequestFailed, request);
+      this.browserContext().emit(BrowserContextEvent.RequestFailed, request);
+      this.browser().emit(BrowserEvent.RequestFailed, request);
     });
     networkManagerEmitter.on(NetworkManagerEvent.RequestFinished, request => {
       this.emit(PageEvent.RequestFinished, request);
+      this.browserContext().emit(BrowserContextEvent.RequestFinished, request);
+      this.browser().emit(BrowserEvent.RequestFinished, request);
     });
 
     this.#tabTargetClient.on(

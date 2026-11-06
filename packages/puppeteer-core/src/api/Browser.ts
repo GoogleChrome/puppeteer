@@ -36,6 +36,7 @@ import {asyncDisposeSymbol, disposeSymbol} from '../util/disposable.js';
 import type {BrowserContext} from './BrowserContext.js';
 import type {Extension} from './Extension.js';
 import type {HTTPRequest} from './HTTPRequest.js';
+import type {HTTPResponse} from './HTTPResponse.js';
 import type {Page} from './Page.js';
 import type {Target} from './Target.js';
 /**
@@ -271,6 +272,51 @@ export const enum BrowserEvent {
    * @experimental
    */
   Request = 'request',
+  /**
+   * Emitted when a request issued by any page in the browser is served from
+   * the memory cache. Contains a {@link HTTPRequest} instance.
+   *
+   * @remarks
+   * The same delivery rules as for {@link BrowserEvent.Request} apply.
+   *
+   * @experimental
+   */
+  RequestServedFromCache = 'requestservedfromcache',
+  /**
+   * Emitted when a response is received for a request issued by any page in
+   * the browser. Contains a {@link HTTPResponse} instance.
+   *
+   * @remarks
+   * Use {@link HTTPResponse.request} to access the originating request. The
+   * same delivery rules as for {@link BrowserEvent.Request} apply.
+   *
+   * @experimental
+   */
+  Response = 'response',
+  /**
+   * Emitted when a request issued by any page in the browser fails, for
+   * example by timing out. Contains a {@link HTTPRequest} instance.
+   *
+   * @remarks
+   * HTTP error responses, such as 404 or 503, are still successful responses
+   * from HTTP standpoint, so the request completes with
+   * {@link BrowserEvent.RequestFinished} and not with
+   * {@link BrowserEvent.RequestFailed}. The same delivery rules as for
+   * {@link BrowserEvent.Request} apply.
+   *
+   * @experimental
+   */
+  RequestFailed = 'requestfailed',
+  /**
+   * Emitted when a request issued by any page in the browser finishes
+   * successfully. Contains a {@link HTTPRequest} instance.
+   *
+   * @remarks
+   * The same delivery rules as for {@link BrowserEvent.Request} apply.
+   *
+   * @experimental
+   */
+  RequestFinished = 'requestfinished',
 }
 
 /**
@@ -283,6 +329,10 @@ export interface BrowserEvents extends Record<EventType, unknown> {
   [BrowserEvent.TargetChanged]: Target;
   [BrowserEvent.Console]: ConsoleMessage;
   [BrowserEvent.Request]: HTTPRequest;
+  [BrowserEvent.RequestServedFromCache]: HTTPRequest;
+  [BrowserEvent.Response]: HTTPResponse;
+  [BrowserEvent.RequestFailed]: HTTPRequest;
+  [BrowserEvent.RequestFinished]: HTTPRequest;
   /**
    * @internal
    */

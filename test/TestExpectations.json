@@ -356,6 +356,13 @@
     "expectations": ["PASS"]
   },
   {
+    "testIdPattern": "[browser.test] Browser specs Browser network events should report responses from dedicated workers",
+    "platforms": ["darwin", "linux", "win32"],
+    "parameters": ["webDriverBiDi"],
+    "expectations": ["SKIP"],
+    "comment": "BiDi does not support worker network requests yet"
+  },
+  {
     "testIdPattern": "[browser.test] Browser specs Browser.add|removeScreen should add and remove a screen",
     "platforms": ["darwin", "linux", "win32"],
     "parameters": ["webDriverBiDi"],
