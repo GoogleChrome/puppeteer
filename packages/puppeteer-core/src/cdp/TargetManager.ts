@@ -740,10 +740,13 @@ export class TargetManager
       promises.push(session.send('Network.enable'));
     }
     if (targetInfo.type === 'shared_worker') {
-      // `Network.emulateNetworkConditionsByRule` has no effect on shared worker
-      // sessions, so the rules are also expressed as blocked URL patterns,
-      // which are honored there. The patterns are evaluated in order and a
-      // `block: false` entry wins over later entries, so the allowlist is
+      // Measured on Chrome 156: `Network.emulateNetworkConditionsByRule` is not
+      // enforced on a shared worker session when it is sent together with
+      // `Network.enable`, and when it is sent after the `Network.enable`
+      // response it can still miss requests made as the worker script starts.
+      // `Network.setBlockedURLs` blocked all of them, so the rules are also
+      // expressed as blocked URL patterns. The patterns are evaluated in order
+      // and a `block: false` entry wins over later entries, so the allowlist is
       // the allowed patterns followed by a catch-all block. An empty list
       // clears previously set patterns.
       const urlPatterns: Protocol.Network.BlockPattern[] = [];
