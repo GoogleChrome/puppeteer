@@ -1164,6 +1164,20 @@
     "comment": "Firefox does not support web worker targets in Puppeteer, see [worker.test] *"
   },
   {
+    "testIdPattern": "[browser.test] Browser specs Browser.on(\"console\") should report console messages replayed when attaching after connect",
+    "platforms": ["darwin", "linux", "win32"],
+    "parameters": ["firefox", "webDriverBiDi"],
+    "expectations": ["FAIL"],
+    "comment": "https://bugzilla.mozilla.org/show_bug.cgi?id=1862018 - Requires multiple session support"
+  },
+  {
+    "testIdPattern": "[browser.test] Browser specs Browser.on(\"console\") should report console messages replayed when attaching after connect",
+    "platforms": ["darwin", "linux", "win32"],
+    "parameters": ["chrome", "pipe"],
+    "expectations": ["SKIP"],
+    "comment": "We can't connect to a browser started with pipe:true"
+  },
+  {
     "testIdPattern": "[browser.test] Browser specs Browser.process should not return child_process for remote browser",
     "platforms": ["darwin", "linux", "win32"],
     "parameters": ["firefox", "webDriverBiDi"],

@@ -78,6 +78,12 @@ export const enum BrowserContextEvent {
    * guarantees that console messages replayed by the browser on attachment
    * are not lost.
    *
+   * With WebDriver BiDi, console messages that the browser replays while
+   * connecting are delivered once, right after {@link Puppeteer.connect}
+   * resolves: register the listener before awaiting anything else, or they
+   * are missed. Replayed messages can be delivered after messages logged
+   * later.
+   *
    * Service workers and shared workers are not attached automatically:
    * their console messages are only delivered after {@link Target.worker}
    * has been called for their target. With WebDriver BiDi, their console

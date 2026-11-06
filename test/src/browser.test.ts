@@ -346,6 +346,48 @@ describe('Browser specs', function () {
       expect(message.worker()).toBe(worker);
       expect(message.page()).toBeNull();
     });
+
+    it('should report console messages replayed when attaching after connect', async () => {
+      const {browser, page, server, puppeteer} = await getTestState();
+
+      await page.goto(server.EMPTY_PAGE);
+      await page.evaluate(() => {
+        console.log('logged-before-connect');
+      });
+
+      using remoteBrowser = await puppeteer.connect({
+        browserWSEndpoint: browser.wsEndpoint(),
+        protocol: browser.protocol,
+      });
+
+      // The listener is registered before any page is attached, so the
+      // messages replayed on attachment must not be dropped.
+      const messages: ConsoleMessage[] = [];
+      remoteBrowser.on('console', message => {
+        messages.push(message);
+      });
+      const remotePage = (await remoteBrowser.pages()).find(page => {
+        return page.url() === server.EMPTY_PAGE;
+      })!;
+
+      // Log a marker after attaching: once it arrives, any duplicate of the
+      // replayed message would have arrived too.
+      await Promise.all([
+        waitEvent<ConsoleMessage>(remoteBrowser, 'console', message => {
+          return message.text() === 'logged-after-connect';
+        }),
+        remotePage.evaluate(() => {
+          console.log('logged-after-connect');
+        }),
+      ]);
+
+      const replayed = messages.filter(message => {
+        return message.text() === 'logged-before-connect';
+      });
+      expect(replayed).toHaveLength(1);
+      expect(replayed[0]!.page()).toBe(remotePage);
+      expect(replayed[0]!.frame()).toBe(remotePage.mainFrame());
+    });
   });
 
   describe('Browser.on("request")', function () {
