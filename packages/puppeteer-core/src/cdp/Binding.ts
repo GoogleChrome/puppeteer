@@ -19,16 +19,19 @@ export class Binding {
   #fn: (...args: unknown[]) => unknown;
   #initSource: string;
   #logger: Logger;
+  #ownsResult: boolean;
   constructor(
     name: string,
     fn: (...args: unknown[]) => unknown,
     initSource: string,
     logger: Logger,
+    ownsResult = false,
   ) {
     this.#name = name;
     this.#fn = fn;
     this.#initSource = initSource;
     this.#logger = logger;
+    this.#ownsResult = ownsResult;
   }
 
   get name(): string {
@@ -52,7 +55,7 @@ export class Binding {
     args: unknown[],
     isTrivial: boolean,
   ): Promise<void> {
-    const stack = new DisposableStack();
+    using stack = new DisposableStack();
     const cdpName = CDP_BINDING_PREFIX + this.#name;
     try {
       if (!isTrivial) {
@@ -67,22 +70,19 @@ export class Binding {
         );
         const properties = await handles.getProperties();
         for (const [index, handle] of properties) {
+          stack.use(handle);
           // This is not straight-forward since some arguments can stringify, but
           // aren't plain objects so add subtypes when the use-case arises.
-          if (index in args) {
-            switch (handle.remoteObject().subtype) {
-              case 'node':
-                args[+index] = handle;
-                break;
-              default:
-                stack.use(handle);
-            }
-          } else {
-            stack.use(handle);
+          if (index in args && handle.remoteObject().subtype === 'node') {
+            args[+index] = handle;
           }
         }
       }
 
+      const result = await this.#fn(...args);
+      if (this.#ownsResult && result instanceof JSHandle) {
+        stack.use(result);
+      }
       await context.evaluate(
         (name, seq, result) => {
           // @ts-expect-error Code is evaluated in a different context.
@@ -92,14 +92,8 @@ export class Binding {
         },
         cdpName,
         id,
-        await this.#fn(...args),
+        result,
       );
-
-      for (const arg of args) {
-        if (arg instanceof JSHandle) {
-          stack.use(arg);
-        }
-      }
     } catch (error) {
       if (isErrorLike(error)) {
         await context
