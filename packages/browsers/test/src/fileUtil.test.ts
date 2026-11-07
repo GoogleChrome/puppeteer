@@ -224,6 +224,18 @@ describe('fileUtil', function () {
     assertTestArchiveUnpacked();
   });
 
+  for (const extension of ['tar.xz', 'tar.bz2']) {
+    it(`rejects a corrupted ${extension}`, async () => {
+      const archivePath = path.join(tmpDir, `corrupted.${extension}`);
+      fs.writeFileSync(archivePath, 'not an archive');
+      const outputPath = path.join(tmpDir, 'output');
+      await assert.rejects(
+        unpackArchive(archivePath, outputPath),
+        /failed to unpack/,
+      );
+    });
+  }
+
   it('unpacks zip extracting every entry with its structure and contents', async () => {
     const archivePath = createTestZip(
       path.join(tmpDir, 'test.zip'),
