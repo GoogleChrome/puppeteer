@@ -136,6 +136,15 @@ async function extractTar(
         reject(error);
       };
     }
+    // Both the decompressor and tar have to succeed: a corrupted archive makes
+    // the decompressor fail after it has written only part of the data.
+    let tarFinished = false;
+    let unpackSucceeded = false;
+    function fulfillIfDone() {
+      if (tarFinished && unpackSucceeded) {
+        fulfill();
+      }
+    }
     const unpack = spawn(
       internalConstantsForTesting[decompressUtilityName],
       ['-d'],
@@ -148,11 +157,24 @@ async function extractTar(
         logger?.(DEBUG_PREFIXES.fileUtil)?.(
           `${decompressUtilityName} exited, code=${code}`,
         );
+        if (code !== 0) {
+          reject(
+            new Error(
+              `\`${decompressUtilityName}\` failed to unpack ${tarPath} (exit code ${code})`,
+            ),
+          );
+          return;
+        }
+        unpackSucceeded = true;
+        fulfillIfDone();
       });
 
     const tar = unpackTar(folderPath);
     tar.once('error', handleError('tar'));
-    tar.once('finish', fulfill);
+    tar.once('finish', () => {
+      tarFinished = true;
+      fulfillIfDone();
+    });
     createReadStream(tarPath).pipe(createTransformStream(unpack)).pipe(tar);
   });
 }
